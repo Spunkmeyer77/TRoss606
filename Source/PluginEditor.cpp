@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "MidiExport.h"
 
 using namespace tross606;
 
@@ -326,6 +327,120 @@ void NameStrip::mouseDown (const juce::MouseEvent& e)
 }
 
 // ================================================================================================
+void ExportKey::paint (juce::Graphics& g)
+{
+    auto r = getLocalBounds().toFloat().reduced (0.5f).withTrimmedBottom (2.0f).translated (0, pressed ? 1.5f : 0.0f);
+    drawKey (g, r, isMouseOver() ? col::cream1.brighter (0.05f) : col::cream1, col::cream2, 4.0f, pressed ? 0.5f : 2.0f);
+    g.setColour (juce::Colour (0xff222222));
+    g.setFont (font (8.5f, true, 0.04f));
+    g.drawText ("EXPORT MIDI", r, juce::Justification::centred);
+}
+
+int ExportKey::length() const { return juce::jlimit (1, kNumSteps, (int) proc.apvts.getRawParameterValue ("seqlen")->load()); }
+
+std::vector<int> ExportKey::nonEmptySlots() const
+{
+    std::vector<int> slots;
+    for (int s = 0; s < kNumSlots; ++s)
+        if (! MidiExport::isEmpty (proc.patterns, s)) slots.push_back (s);
+    return slots;
+}
+
+void ExportKey::mouseDrag (const juce::MouseEvent& e)
+{
+    if (dragged || e.getDistanceFromDragStart() < 6) return;
+    dragged = true; pressed = false; repaint();
+    // write the playing pattern to a temporary file and hand it to the DAW as a file drag
+    const int slot = proc.getCurrentSlot();
+    auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("TRoss606");
+    dir.createDirectory();
+    const auto file = dir.getChildFile (MidiExport::fileName (slot));
+    if (MidiExport::write (MidiExport::make (proc.patterns, { slot }, length(), proc.currentBpm.load(),
+                                             "TRoss 606 Pattern " + juce::String (slot + 1)), file))
+        juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() }, false, this);
+}
+
+void ExportKey::mouseUp (const juce::MouseEvent& e)
+{
+    const bool wasClick = pressed && ! dragged && getLocalBounds().contains (e.getPosition());
+    pressed = false; repaint();
+    if (wasClick) showMenu();
+}
+
+void ExportKey::showMenu()
+{
+    const int slot = proc.getCurrentSlot();
+    const bool playingEmpty = MidiExport::isEmpty (proc.patterns, slot);
+    const auto filled = nonEmptySlots();
+    juce::PopupMenu m;
+    m.addSectionHeader ("Export as MIDI (" + juce::String (length()) + " steps, "
+                        + juce::String (juce::roundToInt (proc.currentBpm.load())) + " BPM)");
+    m.addItem (1, "Pattern " + juce::String (slot + 1) + " (playing)" + (playingEmpty ? " - empty" : ""), ! playingEmpty);
+    m.addItem (2, "All patterns, in a row (" + juce::String ((int) filled.size()) + " with notes)", ! filled.empty());
+    m.addItem (3, "All patterns as separate files", ! filled.empty());
+    m.addSeparator();
+    m.addItem (4, "Tip: drag this key onto a MIDI track to drop the playing pattern as a clip", false);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
+                     [safe = juce::Component::SafePointer<ExportKey> (this)] (int id)
+                     {
+                         if (safe == nullptr) return;
+                         if (id == 1) safe->exportPlaying();
+                         if (id == 2) safe->exportAllInARow();
+                         if (id == 3) safe->exportAllSeparate();
+                     });
+}
+
+static juce::File exportStartFolder()
+{
+    auto docs = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+    return docs.isDirectory() ? docs : juce::File::getSpecialLocation (juce::File::userHomeDirectory);
+}
+
+void ExportKey::exportPlaying()
+{
+    const int slot = proc.getCurrentSlot();
+    auto midi = MidiExport::make (proc.patterns, { slot }, length(), proc.currentBpm.load(),
+                                  "TRoss 606 Pattern " + juce::String (slot + 1));
+    chooser = std::make_unique<juce::FileChooser> ("Save pattern as MIDI", exportStartFolder().getChildFile (MidiExport::fileName (slot)), "*.mid");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                          | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [midi] (const juce::FileChooser& fc)
+                          {
+                              const auto f = fc.getResult();
+                              if (f != juce::File()) MidiExport::write (midi, f.withFileExtension ("mid"));
+                          });
+}
+
+void ExportKey::exportAllInARow()
+{
+    auto midi = MidiExport::make (proc.patterns, nonEmptySlots(), length(), proc.currentBpm.load(), "TRoss 606 Patterns");
+    chooser = std::make_unique<juce::FileChooser> ("Save all patterns as one MIDI file", exportStartFolder().getChildFile ("TRoss606 Patterns.mid"), "*.mid");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                          | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [midi] (const juce::FileChooser& fc)
+                          {
+                              const auto f = fc.getResult();
+                              if (f != juce::File()) MidiExport::write (midi, f.withFileExtension ("mid"));
+                          });
+}
+
+void ExportKey::exportAllSeparate()
+{
+    std::vector<std::pair<juce::String, juce::MidiFile>> files;
+    for (int s : nonEmptySlots())
+        files.push_back ({ MidiExport::fileName (s),
+                           MidiExport::make (proc.patterns, { s }, length(), proc.currentBpm.load(), "TRoss 606 Pattern " + juce::String (s + 1)) });
+    chooser = std::make_unique<juce::FileChooser> ("Choose a folder for the MIDI files", exportStartFolder());
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [files] (const juce::FileChooser& fc)
+                          {
+                              const auto dir = fc.getResult();
+                              if (dir.isDirectory())
+                                  for (auto& [name, midi] : files) MidiExport::write (midi, dir.getChildFile (name));
+                          });
+}
+
+// ================================================================================================
 // PatternPad sits at (918, kSeqY), 100 x 230
 juce::Rectangle<float> PatternPad::buttonRect (int slot)
 {
@@ -449,6 +564,9 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
     clearBtn.onClick = [this] { proc.clearCurrentPattern(); grid.repaint(); };
     content.addAndMakeVisible (clearBtn);
     addButton ("rec", "REC", { 1027, 374, 62, 24 }, "rec").getProperties().set ("led", true);
+    exportKey.setBounds (1025, 406, 66, 26);
+    exportKey.setTooltip ("Click: export patterns as MIDI files. Drag onto a MIDI track: drop the playing pattern as a clip.");
+    content.addAndMakeVisible (exportKey);
 
     if (proc.isStandalone())   // no host transport: own play button + tempo
     {
@@ -457,19 +575,19 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
         playBtn.setClickingTogglesState (true);
         playBtn.setToggleState (proc.internalPlay.load(), juce::dontSendNotification);
         playBtn.onClick = [this] { proc.internalPlay = playBtn.getToggleState(); };
-        playBtn.setBounds (1027, 408, 62, 24);
+        playBtn.setBounds (991, 202, 50, 24);
         content.addAndMakeVisible (playBtn);
 
         bpmBox.setSliderStyle (juce::Slider::RotaryVerticalDrag);
         bpmBox.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         bpmBox.getProperties().set ("seg", true);
-        bpmBox.getProperties().set ("segSize", 13.0f);
+        bpmBox.getProperties().set ("segSize", 10.5f);
         bpmBox.setRange (40.0, 240.0, 1.0);
         bpmBox.setValue (proc.internalBpm.load(), juce::dontSendNotification);
         bpmBox.setMouseDragSensitivity (300);
-        bpmBox.textFromValueFunction = [] (double v) { return juce::String ((int) v); };
+        bpmBox.textFromValueFunction = [] (double v) { return juce::String ((int) v) + " BPM"; };
         bpmBox.onValueChange = [this] { proc.internalBpm = (float) bpmBox.getValue(); };
-        bpmBox.setBounds (1034, 449, 48, 18);
+        bpmBox.setBounds (1046, 204, 50, 20);
         content.addAndMakeVisible (bpmBox);
     }
 
@@ -604,8 +722,6 @@ void Tross606Editor::paintPanel (juce::Graphics& g)
     g.setColour (col::darkLabel);
     g.setFont (font (8.5f, false, 0.15f));
     g.drawText ("LENGTH", 1018, kSeqY + 12, 80, 12, juce::Justification::centred);
-    if (proc.isStandalone())
-        g.drawText ("BPM", 1018, 437, 80, 10, juce::Justification::centred);
 }
 
 void Tross606Editor::timerCallback()

@@ -14,6 +14,7 @@
 | CLEAR | Clears the pattern that's playing |
 | REC | While the host is playing, keyboard hits and name-strip clicks are written into the nearest step. Velocity above 100 also sets the accent. On by default |
 | PATTERN 1–12 | 12 pattern slots. While playing, a new slot waits until the current pattern reaches step 1. While stopped, it switches immediately. The LED shows which slot is playing; a blinking LED shows the slot that's queued |
+| EXPORT MIDI | Click for a menu: export the playing pattern, all patterns in a row, or all patterns as separate `.mid` files. Drag the key onto a MIDI track to drop the playing pattern in as a clip. Steps are 16th notes, accented steps velocity 127, channel 10, TRoss 606's note map |
 
 **Keyboard map (Ableton note names, C1 = MIDI 36):** BD C1/B0 · SD D1/E1 · LT A1/F1/G1 · HT D2/B1/C2 ·
 CP D#1 · CH F#1/G#1 · OH A#1 · CY C#2/A2/D#2/E2/G2.
@@ -39,7 +40,7 @@ pick the output (for example `BD`) in the second menu, and set Monitor to **In**
 
 The standalone app has only the main output, so it doesn't show the OWN OUT switches.
 
-The **standalone app** has no host transport, so it shows its own **PLAY** button and BPM read-out.
+The **standalone app** has no host transport, so it shows its own **PLAY** button and BPM read-out (in the master section).
 
 Defaults: Bass Drum Decay 27.2 %, Bass Drum Attack 21.3 %.
 The build's version number is shown at the top right of the panel.

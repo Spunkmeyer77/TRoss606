@@ -2,6 +2,7 @@
 // state save/restore, and an editor snapshot.
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../Source/PluginProcessor.h"
+#include "../Source/MidiExport.h"
 
 struct FakeHost : juce::AudioPlayHead
 {
@@ -206,6 +207,45 @@ int main (int argc, char** argv)
         recP->setValueNotifyingHost (1.0f);
         host.playing = false;
         run (2);
+    }
+
+    // 6d. MIDI export: write a known pattern, read the file back, check notes, velocities, timing, length
+    {
+        tross606::PatternMemory pm;
+        auto put2 = [&] (int slot, int row, const char* s) { for (int i = 0; i < 16; ++i) pm.setCell (slot, row, i, s[i] == 'x'); };
+        put2 (2, 0, "x...............");   // accent on step 1
+        put2 (2, 1, "x.......x.......");   // BD
+        put2 (2, 2, "....x.......x...");   // SD
+        put2 (2, 6, "x.x.x.x.x.x.x.x.");   // CH
+        put2 (7, 8, "x...............");   // CY in slot 8
+        auto f = outDir.getChildFile ("export_test.mid");
+        check (tross606::MidiExport::write (tross606::MidiExport::make (pm, { 2 }, 16, 128.0, "TRoss 606 Pattern 3"), f), "MIDI file written");
+        juce::MidiFile back;
+        juce::FileInputStream in (f);
+        const bool read = in.openedOk() && back.readFrom (in);
+        int ons = 0, accented = 0, bdOn = 0, chOn = 0, ch10 = 0;
+        double lastTick = 0, tempo = 0;
+        if (read)
+            for (auto* e : *back.getTrack (0))
+            {
+                const auto& m = e->message;
+                lastTick = juce::jmax (lastTick, m.getTimeStamp());
+                if (m.isTempoMetaEvent()) tempo = 60.0 / m.getTempoSecondsPerQuarterNote();
+                if (! m.isNoteOn()) continue;
+                ++ons; if (m.getChannel() == 10) ++ch10;
+                if (m.getVelocity() == 127) ++accented;
+                if (m.getNoteNumber() == 36) ++bdOn;
+                if (m.getNoteNumber() == 42) ++chOn;
+            }
+        std::printf ("MIDI export: %d notes, %d accented, tempo %.1f, last tick %.0f, ticks/quarter %d\n",
+                     ons, accented, tempo, lastTick, (int) back.getTimeFormat());
+        check (read && ons == 12 && bdOn == 2 && chOn == 8 && accented == 2 && ch10 == 12, "exported notes: BD x2, SD x2, CH x8, accent on step 1 (BD + CH at 127), channel 10");
+        check (std::abs (tempo - 128.0) < 0.01 && std::abs (lastTick - 16 * 24) < 0.5, "exported tempo 128 BPM and clip length 16 steps");
+        auto row = tross606::MidiExport::make (pm, { 2, 7 }, 12, 120.0, "row");
+        double endTick = 0;
+        for (auto* e : *row.getTrack (0)) endTick = juce::jmax (endTick, e->message.getTimeStamp());
+        check (std::abs (endTick - 2 * 12 * 24) < 0.5, "two patterns in a row at LENGTH 12 = 24 steps");
+        check (tross606::MidiExport::isEmpty (pm, 0) && ! tross606::MidiExport::isEmpty (pm, 7), "empty patterns are detected");
     }
 
     // 7. state round trip

@@ -54,6 +54,28 @@ private:
     juce::String title;
 };
 
+// EXPORT MIDI key: click = menu (this pattern / all in a row / all as separate files), drag = drop the
+// playing pattern onto a DAW track as a MIDI clip
+class ExportKey : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit ExportKey (Tross606Processor& p) : proc (p) {}
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override { pressed = true; dragged = false; repaint(); }
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+private:
+    Tross606Processor& proc;
+    bool pressed = false, dragged = false;
+    std::unique_ptr<juce::FileChooser> chooser;
+    void showMenu();
+    void exportPlaying();
+    void exportAllInARow();
+    void exportAllSeparate();
+    std::vector<int> nonEmptySlots() const;
+    int length() const;
+};
+
 class PatternPad : public juce::Component
 {
 public:
@@ -102,6 +124,7 @@ private:
     PatternPad patternPad { proc };
     StatusLcd lcd { proc };
     std::vector<std::unique_ptr<NameStrip>> strips;
+    ExportKey exportKey { proc };
 
     std::vector<std::unique_ptr<juce::Slider>> sliders;
     std::vector<std::unique_ptr<juce::Button>> buttons;

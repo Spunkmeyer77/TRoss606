@@ -174,6 +174,7 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         ppq = internalPpq;
     }
     bpm = juce::jlimit (20.0, 999.0, bpm);
+    currentBpm.store (bpm);
     const double sixteenthsPerSample = bpm / 60.0 * 4.0 / sampleRate;
     if (isStandalone() && ! hostTransport && playing) internalPpq += numSamples * sixteenthsPerSample / 4.0;
 

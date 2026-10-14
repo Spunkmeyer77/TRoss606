@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(TRoss606 VERSION 0.4.0)
+project(TRoss606 VERSION 0.5.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -48,7 +48,8 @@ juce_add_plugin(TRoss606
 
 target_sources(TRoss606 PRIVATE
     Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp)
+    Source/PluginEditor.cpp
+    Source/MidiExport.h)
 
 target_compile_definitions(TRoss606 PUBLIC
     JUCE_WEB_BROWSER=0

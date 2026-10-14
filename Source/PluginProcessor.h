@@ -60,6 +60,9 @@ public:
     std::atomic<bool>  internalPlay { false };
     std::atomic<float> internalBpm { 120.0f };
 
+    // the song tempo seen in the last audio block (used for MIDI export)
+    std::atomic<double> currentBpm { 120.0 };
+
 private:
     tross606::Engine engine;
     tross606::SoundParams sound;
