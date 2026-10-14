@@ -1,5 +1,4 @@
-// TRoss 606 engine: the drum voices from the Max for Live device (GenVoices.h, generated from its
-// gen~ code) plus the pattern memory and sequencer logic from the device's JavaScript.
+// TRoss 606 engine: the drum voices (GenVoices.h) plus the pattern memory and sequencer logic.
 // No JUCE in here, so it can be tested on its own (tools/render_test.cpp).
 #pragma once
 #include "GenVoices.h"
@@ -12,7 +11,7 @@ enum Voice { BD, SD, LT, HT, CP, CH, OH, CY, kNumVoices };
 // sequencer rows: 0 = accent, 1..8 = the voices above (row = voice + 1)
 constexpr int kNumRows = 9, kNumSteps = 16, kNumSlots = 12;
 
-// keyboard note -> voice (same map as the device's MIDI input), -1 = not mapped
+// keyboard note -> voice (General MIDI drum layout), -1 = not mapped
 inline int noteToVoice (int n)
 {
     switch (n)
@@ -29,7 +28,7 @@ inline int noteToVoice (int n)
     }
 }
 
-// Sound parameters, same names and units as the device
+// Sound parameters (units as shown on the panel)
 struct SoundParams
 {
     float master = -6, accent = 50;
@@ -91,7 +90,7 @@ public:
         for (int i = 0; i < kNumVoices; ++i) { *mute[i] = p.mute[i] ? 1 : 0; *solo[i] = p.solo[i] ? 1 : 0; }
     }
 
-    // a hit from the keyboard (velocity 1..127; above 100 adds accent, like the device)
+    // a hit from the keyboard (velocity 1..127; above 100 adds accent)
     void trigger (int voice, int velocity)
     {
         auto& v = *g;

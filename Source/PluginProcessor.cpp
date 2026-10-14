@@ -32,7 +32,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout Tross606Processor::createLay
 {
     juce::AudioProcessorValueTreeState::ParameterLayout l;
     const SoundParams d;
-    // same order and names as the Max for Live device
     for (int v = 0; v < kNumVoices; ++v)
     {
         const juce::String id = kIds[v], nm = kNames[v];

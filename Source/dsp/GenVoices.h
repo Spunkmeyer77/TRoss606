@@ -1,5 +1,6 @@
-// GENERATED from the TRoss 606 gen~ codebox by tools/gen2cpp.py - do not edit by hand.
-// Drum voices ported from analogcode/606-Inspired-Synth-Drums (MIT, (c) 2026 Matthew Fecher).
+// TRoss 606 drum voices.
+// Contains code derived from 606-Inspired-Synth-Drums, (c) 2026 Matthew Fecher, MIT licence
+// (see LICENSE-606-Inspired-Synth-Drums.txt).
 #pragma once
 #include <cmath>
 #include <cstdint>

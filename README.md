@@ -12,21 +12,21 @@
 | RUN | Sequencer on/off |
 | LENGTH | Pattern length, 1–16 steps: drag the red read-out up/down (steps past the length are dimmed) |
 | CLEAR | Clears the pattern that's playing |
-| REC | While the host is playing, keyboard hits are written into the nearest step. Velocity above 100 also sets the accent. On by default, like the device |
+| REC | While the host is playing, keyboard hits are written into the nearest step. Velocity above 100 also sets the accent. On by default |
 | PATTERN 1–12 | 12 pattern slots. While playing, a new slot waits until the current pattern reaches step 1. While stopped, it switches immediately. The LED shows which slot is playing; a blinking LED shows the slot that's queued |
 
 **Keyboard map (Ableton note names, C1 = MIDI 36):** BD C1/B0 · SD D1/E1 · LT A1/F1/G1 · HT D2/B1/C2 ·
 CP D#1 · CH F#1/G#1 · OH A#1 · CY C#2/A2/D#2/E2/G2.
 
-Velocity works like the device: velocities up to 100 scale the level, and anything above 100
+Velocity: velocities up to 100 scale the level, and anything above 100
 also adds the Accent.
 
 All 12 patterns are saved with your Live set, along with every knob. The window can be resized
-from its corner. Output is mono on both channels, like the device.
+from its corner. Output is mono on both channels.
 
 The **standalone app** has no host transport, so it shows its own **PLAY** button and BPM read-out.
 
-Defaults: Bass Drum Decay 27.2 %, Bass Drum Attack 21.3 %; everything else as in the device.
+Defaults: Bass Drum Decay 27.2 %, Bass Drum Attack 21.3 %.
 The build's version number is shown at the top right of the panel.
 
 ## Build on your Mac (macOS 12+)
