@@ -1,0 +1,261 @@
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+
+using namespace tross606;
+
+namespace
+{
+using APF = juce::AudioParameterFloat;
+using APB = juce::AudioParameterBool;
+
+const char* kIds[kNumVoices]   = { "bd", "sd", "lt", "ht", "cp", "ch", "oh", "cy" };
+const char* kNames[kNumVoices] = { "BD", "SD", "LT", "HT", "CP", "CH", "OH", "CY" };
+
+std::unique_ptr<APF> param (juce::String id, juce::String name, float lo, float hi, float def,
+                            std::function<juce::String (float, int)> fmt)
+{
+    return std::make_unique<APF> (juce::ParameterID { id, 1 }, name, juce::NormalisableRange<float> (lo, hi), def,
+                                  juce::AudioParameterFloatAttributes().withStringFromValueFunction (std::move (fmt)));
+}
+auto semis   = [] (float v, int) { return juce::String (v, 1) + " st"; };
+auto percent = [] (float v, int) { return juce::String (juce::roundToInt (v)) + " %"; };
+auto decibel = [] (float v, int) { return v <= -69.9f ? juce::String ("-inf dB") : juce::String (v, 1) + " dB"; };
+
+std::unique_ptr<APF> level (juce::String id, juce::String name, float def) { return param (id, name, -70.0f, 6.0f, def, decibel); }
+std::unique_ptr<APF> pct (juce::String id, juce::String name, float def)   { return param (id, name, 0.0f, 100.0f, def, percent); }
+std::unique_ptr<APB> onOff (juce::String id, juce::String name, bool def)  { return std::make_unique<APB> (juce::ParameterID { id, 1 }, name, def); }
+
+int wrapStep (juce::int64 x, int len) { return (int) (((x % len) + len) % len); }
+} // namespace
+
+juce::AudioProcessorValueTreeState::ParameterLayout Tross606Processor::createLayout()
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout l;
+    const SoundParams d;
+    // same order and names as the Max for Live device
+    for (int v = 0; v < kNumVoices; ++v)
+    {
+        const juce::String id = kIds[v], nm = kNames[v];
+        l.add (param (id + "_tune", nm + " Tune", -12.0f, 12.0f, d.tune[v], semis));
+        l.add (pct (id + "_decay", nm + " Decay", d.decay[v]));
+        l.add (level (id + "_lvl", nm + " Level", d.lvl[v]));
+        if (v == BD) l.add (pct ("bd_attack", "BD Attack", d.bdAttack));
+        if (v == SD) l.add (pct ("sd_snappy", "SD Snappy", d.sdSnappy));
+        if (v == CP) l.add (pct ("cp_noise", "CP Noise", d.cpNoise));
+        if (v == CY) l.add (pct ("cy_tone", "CY Tone", d.cyTone));
+        l.add (onOff (id + "_mute", nm + " Mute", false));
+        l.add (onOff (id + "_solo", nm + " Solo", false));
+    }
+    l.add (pct ("accent", "Accent", d.accent));
+    l.add (level ("master", "Volume", d.master));
+    l.add (onOff ("seqon", "Seq On", true));
+    l.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { "seqlen", 1 }, "Seq Length", 1, 16, 16));
+    l.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "pattern", 1 }, "Pattern",
+                                                         juce::StringArray { "1", "2", "3", "4", "5", "6", "7", "8" }, 0));
+    l.add (onOff ("rec", "Record", true));
+    return l;
+}
+
+Tross606Processor::Tross606Processor()
+    : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts (*this, nullptr, "TROSS606", createLayout())
+{
+    auto p = [this] (const juce::String& id) { return apvts.getRawParameterValue (id); };
+    for (int v = 0; v < kNumVoices; ++v)
+    {
+        const juce::String id = kIds[v];
+        raw.lvl[v] = p (id + "_lvl");   raw.tune[v] = p (id + "_tune"); raw.decay[v] = p (id + "_decay");
+        raw.mute[v] = p (id + "_mute"); raw.solo[v] = p (id + "_solo");
+    }
+    raw.bdAttack = p ("bd_attack"); raw.sdSnappy = p ("sd_snappy"); raw.cpNoise = p ("cp_noise"); raw.cyTone = p ("cy_tone");
+    raw.accent = p ("accent"); raw.master = p ("master");
+    raw.seqOn = p ("seqon"); raw.seqLen = p ("seqlen"); raw.pattern = p ("pattern"); raw.rec = p ("rec");
+}
+
+bool Tross606Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
+{
+    const auto out = layouts.getMainOutputChannelSet();
+    return out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono();
+}
+
+void Tross606Processor::prepareToPlay (double sr, int)
+{
+    sampleRate = sr;
+    engine.prepare (sr);
+    wasPlaying = false;
+    playStep = -1;
+    lastPatternParam = (int) raw.pattern->load();
+}
+
+void Tross606Processor::pullParams()
+{
+    for (int v = 0; v < kNumVoices; ++v)
+    {
+        sound.lvl[v] = raw.lvl[v]->load();   sound.tune[v] = raw.tune[v]->load(); sound.decay[v] = raw.decay[v]->load();
+        sound.mute[v] = raw.mute[v]->load() > 0.5f; sound.solo[v] = raw.solo[v]->load() > 0.5f;
+    }
+    sound.bdAttack = raw.bdAttack->load(); sound.sdSnappy = raw.sdSnappy->load();
+    sound.cpNoise = raw.cpNoise->load();   sound.cyTone = raw.cyTone->load();
+    sound.accent = raw.accent->load();     sound.master = raw.master->load();
+    engine.setParams (sound);
+}
+
+// the sequencer reached `step`: a queued pattern takes over on step 1, then the step plays
+void Tross606Processor::doStep (int step, bool seqOn)
+{
+    if (step == 0 && pendingSlot.load() >= 0)
+    {
+        currentSlot = pendingSlot.load();
+        pendingSlot = -1;
+    }
+    const int slot = currentSlot.load();
+    uint16_t rows[kNumRows];
+    for (int r = 0; r < kNumRows; ++r) rows[r] = patterns.get (slot, r);
+    engine.sequencerStep (step, rows, seqOn);
+    playStep = step;
+}
+
+// REC while playing: the hit goes into the nearest step; velocity above 100 also sets the accent
+void Tross606Processor::recordHit (int voice, int velocity, double sixteenthPos, int len)
+{
+    const int step = wrapStep ((juce::int64) std::floor (sixteenthPos + 0.5), len);
+    const int slot = currentSlot.load();
+    patterns.setCell (slot, voice + 1, step, true);
+    if (velocity > 100) patterns.setCell (slot, 0, step, true);
+}
+
+void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    juce::ScopedNoDenormals noDenormals;
+    const int numSamples = buffer.getNumSamples();
+    pullParams();
+
+    const bool seqOn = raw.seqOn->load() > 0.5f;
+    const bool recOn = raw.rec->load() > 0.5f;
+    const int  len   = juce::jlimit (1, kNumSteps, (int) raw.seqLen->load());
+
+    // ---- transport
+    bool playing = false;
+    double ppq = 0.0, bpm = 120.0;
+    bool hostTransport = false;
+    if (auto* ph = getPlayHead())
+        if (auto pos = ph->getPosition())
+        {
+            if (auto b = pos->getBpm()) bpm = *b;
+            if (auto q = pos->getPpqPosition())
+            {
+                hostTransport = true;
+                playing = pos->getIsPlaying();
+                ppq = *q;
+            }
+        }
+    if (! hostTransport && isStandalone())
+    {
+        bpm = internalBpm.load();
+        playing = internalPlay.load();
+        if (! playing) internalPpq = 0.0;
+        ppq = internalPpq;
+    }
+    bpm = juce::jlimit (20.0, 999.0, bpm);
+    const double sixteenthsPerSample = bpm / 60.0 * 4.0 / sampleRate;
+    if (isStandalone() && ! hostTransport && playing) internalPpq += numSamples * sixteenthsPerSample / 4.0;
+
+    // ---- pattern selector: while playing, a new slot waits until the pattern is back at step 1
+    const int sel = (int) raw.pattern->load();
+    if (sel != lastPatternParam)
+    {
+        lastPatternParam = sel;
+        if (playing) pendingSlot = (sel == currentSlot.load()) ? -1 : sel;
+        else         { pendingSlot = -1; currentSlot = sel; }
+    }
+    if (! playing)
+    {
+        if (pendingSlot.load() >= 0) { currentSlot = pendingSlot.load(); pendingSlot = -1; }
+        wasPlaying = false;
+        playStep = -1;
+    }
+
+    auto* left  = buffer.getWritePointer (0);
+    auto* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr;
+    auto midiIt = midi.cbegin();
+    const double q0 = ppq * 4.0;   // position in 16ths at the block start
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const double q = q0 + i * sixteenthsPerSample;
+        if (playing)
+        {
+            const auto six = (juce::int64) std::floor (q + 1e-9);
+            if (! wasPlaying)
+            {
+                // starting exactly on a 16th plays it; starting in between waits for the next one
+                const double frac = q - std::floor (q);
+                lastSixteenth = (frac < sixteenthsPerSample) ? six - 1 : six;
+                wasPlaying = true;
+            }
+            if (six != lastSixteenth)
+            {
+                lastSixteenth = six;
+                doStep (wrapStep (six, len), seqOn);
+            }
+        }
+
+        for (; midiIt != midi.cend() && (*midiIt).samplePosition <= i; ++midiIt)
+        {
+            const auto m = (*midiIt).getMessage();
+            if (! m.isNoteOn()) continue;
+            const int voice = noteToVoice (m.getNoteNumber());
+            if (voice < 0) continue;
+            engine.trigger (voice, m.getVelocity());
+            if (playing && recOn) recordHit (voice, m.getVelocity(), q, len);
+        }
+
+        const float s = engine.tick();
+        left[i] = s;
+        if (right) right[i] = s;
+    }
+    for (int c = 2; c < buffer.getNumChannels(); ++c) buffer.clear (c, 0, numSamples);
+}
+
+// ---- state: parameters + the 8 patterns + which slot is playing
+void Tross606Processor::getStateInformation (juce::MemoryBlock& destData)
+{
+    auto state = apvts.copyState();
+    auto pats = state.getOrCreateChildWithName ("PATTERNS", nullptr);
+    pats.setProperty ("current", currentSlot.load(), nullptr);
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        juce::StringArray rows;
+        for (int r = 0; r < kNumRows; ++r) rows.add (juce::String::toHexString ((int) patterns.get (s, r)));
+        pats.setProperty ("slot" + juce::String (s), rows.joinIntoString (" "), nullptr);
+    }
+    if (auto xml = state.createXml()) copyXmlToBinary (*xml, destData);
+}
+
+void Tross606Processor::setStateInformation (const void* data, int sizeInBytes)
+{
+    auto xml = getXmlFromBinary (data, sizeInBytes);
+    if (xml == nullptr || ! xml->hasTagName (apvts.state.getType())) return;
+    auto state = juce::ValueTree::fromXml (*xml);
+    auto pats = state.getChildWithName ("PATTERNS");
+    if (pats.isValid())
+    {
+        for (int s = 0; s < kNumSlots; ++s)
+        {
+            juce::StringArray rows;
+            rows.addTokens (pats.getProperty ("slot" + juce::String (s)).toString(), " ", "");
+            for (int r = 0; r < kNumRows; ++r)
+                patterns.set (s, r, (uint16_t) (r < rows.size() ? rows[r].getHexValue32() & 0xffff : 0));
+        }
+        state.removeChild (pats, nullptr);
+    }
+    apvts.replaceState (state);
+    const int sel = (int) raw.pattern->load();
+    currentSlot = pats.isValid() ? juce::jlimit (0, kNumSlots - 1, (int) pats.getProperty ("current", sel)) : sel;
+    pendingSlot = -1;
+    lastPatternParam = sel;
+}
+
+juce::AudioProcessorEditor* Tross606Processor::createEditor() { return new Tross606Editor (*this); }
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new Tross606Processor(); }
