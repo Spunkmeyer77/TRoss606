@@ -28,6 +28,16 @@ std::unique_ptr<APB> onOff (juce::String id, juce::String name, bool def)  { ret
 int wrapStep (juce::int64 x, int len) { return (int) (((x % len) + len) % len); }
 } // namespace
 
+// main stereo out + one mono out per drum (the standalone app keeps only the main out)
+juce::AudioProcessor::BusesProperties Tross606Processor::makeBuses()
+{
+    auto buses = BusesProperties().withOutput ("Main", juce::AudioChannelSet::stereo(), true);
+    if (juce::PluginHostType::getPluginLoadedAs() != juce::AudioProcessor::wrapperType_Standalone)
+        for (auto* name : kNames)
+            buses = buses.withOutput (name, juce::AudioChannelSet::mono(), true);
+    return buses;
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout Tross606Processor::createLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout l;
@@ -44,6 +54,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Tross606Processor::createLay
         if (v == CY) l.add (pct ("cy_tone", "CY Tone", d.cyTone));
         l.add (onOff (id + "_mute", nm + " Mute", false));
         l.add (onOff (id + "_solo", nm + " Solo", false));
+        l.add (onOff (id + "_out", nm + " Own Out", false));
     }
     l.add (pct ("accent", "Accent", d.accent));
     l.add (level ("master", "Volume", d.master));
@@ -56,7 +67,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Tross606Processor::createLay
 }
 
 Tross606Processor::Tross606Processor()
-    : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+    : AudioProcessor (makeBuses()),
       apvts (*this, nullptr, "TROSS606", createLayout())
 {
     auto p = [this] (const juce::String& id) { return apvts.getRawParameterValue (id); };
@@ -64,7 +75,7 @@ Tross606Processor::Tross606Processor()
     {
         const juce::String id = kIds[v];
         raw.lvl[v] = p (id + "_lvl");   raw.tune[v] = p (id + "_tune"); raw.decay[v] = p (id + "_decay");
-        raw.mute[v] = p (id + "_mute"); raw.solo[v] = p (id + "_solo");
+        raw.mute[v] = p (id + "_mute"); raw.solo[v] = p (id + "_solo"); raw.ownOut[v] = p (id + "_out");
     }
     raw.bdAttack = p ("bd_attack"); raw.sdSnappy = p ("sd_snappy"); raw.cpNoise = p ("cp_noise"); raw.cyTone = p ("cy_tone");
     raw.accent = p ("accent"); raw.master = p ("master");
@@ -74,7 +85,13 @@ Tross606Processor::Tross606Processor()
 bool Tross606Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto out = layouts.getMainOutputChannelSet();
-    return out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono();
+    if (out != juce::AudioChannelSet::stereo() && out != juce::AudioChannelSet::mono()) return false;
+    for (int b = 1; b < layouts.outputBuses.size(); ++b)   // each drum output: mono, or switched off by the host
+    {
+        const auto& set = layouts.outputBuses.getReference (b);
+        if (! set.isDisabled() && set != juce::AudioChannelSet::mono()) return false;
+    }
+    return layouts.inputBuses.isEmpty();
 }
 
 void Tross606Processor::prepareToPlay (double sr, int)
@@ -92,6 +109,7 @@ void Tross606Processor::pullParams()
     {
         sound.lvl[v] = raw.lvl[v]->load();   sound.tune[v] = raw.tune[v]->load(); sound.decay[v] = raw.decay[v]->load();
         sound.mute[v] = raw.mute[v]->load() > 0.5f; sound.solo[v] = raw.solo[v]->load() > 0.5f;
+        sound.ownOut[v] = raw.ownOut[v]->load() > 0.5f;
     }
     sound.bdAttack = raw.bdAttack->load(); sound.sdSnappy = raw.sdSnappy->load();
     sound.cpNoise = raw.cpNoise->load();   sound.cyTone = raw.cyTone->load();
@@ -174,8 +192,22 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         playStep = -1;
     }
 
+    buffer.clear();
+    const int numCh = buffer.getNumChannels();
     auto* left  = buffer.getWritePointer (0);
-    auto* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr;
+    auto* right = getBus (false, 0) != nullptr && getBus (false, 0)->getNumberOfChannels() > 1 && numCh > 1
+                    ? buffer.getWritePointer (1) : nullptr;
+    // the drum outputs that the host has switched on (nullptr = not there)
+    float* drumOut[kNumVoices] {};
+    for (int v = 0; v < kNumVoices; ++v)
+        if (auto* bus = getBus (false, v + 1))
+            if (bus->isEnabled() && bus->getNumberOfChannels() > 0)
+            {
+                const int ch = getChannelIndexInProcessBlockBuffer (false, v + 1, 0);
+                if (ch >= 0 && ch < numCh) drumOut[v] = buffer.getWritePointer (ch);
+            }
+    for (int v = 0; v < kNumVoices; ++v) engine.setOwnOut (v, sound.ownOut[v] && drumOut[v] != nullptr);
+    float drumSig[kNumVoices];
     auto midiIt = midi.cbegin();
     const double q0 = ppq * 4.0;   // position in 16ths at the block start
 
@@ -209,11 +241,12 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
             if (playing && recOn) recordHit (voice, m.getVelocity(), q, len);
         }
 
-        const float s = engine.tick();
+        const float s = engine.tick (drumSig);
         left[i] = s;
         if (right) right[i] = s;
+        for (int v = 0; v < kNumVoices; ++v)
+            if (drumOut[v] != nullptr) drumOut[v][i] = drumSig[v];
     }
-    for (int c = 2; c < buffer.getNumChannels(); ++c) buffer.clear (c, 0, numSamples);
 }
 
 // ---- state: parameters + the 8 patterns + which slot is playing

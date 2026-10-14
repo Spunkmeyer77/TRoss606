@@ -34,7 +34,7 @@ int main (int argc, char** argv)
     Tross606Processor proc;
     FakeHost host;
     proc.setPlayHead (&host);
-    proc.setPlayConfigDetails (0, 2, sr, block);
+    proc.setRateAndBufferSizeDetails (sr, block);
     proc.prepareToPlay (sr, block);
     std::printf ("params: %d\n", (int) proc.getParameters().size());
     check (std::abs (proc.apvts.getRawParameterValue ("bd_decay")->load() - 27.2f) < 0.01f
@@ -55,7 +55,9 @@ int main (int argc, char** argv)
     put (1, 8, "x...............");
     put (11, 1, "x.x.x.x.x.x.x.x.");
 
-    juce::AudioBuffer<float> buf (2, block);
+    const int totalOuts = proc.getTotalNumOutputChannels();
+    std::printf ("output buses: %d, channels: %d\n", proc.getBusCount (false), totalOuts);
+    juce::AudioBuffer<float> buf (totalOuts, block);
     juce::AudioBuffer<float> all (2, (int) sr * 9);
     int written = 0, stepsSeen = 0, lastStep = -1, bad = 0;
     float peak = 0;
@@ -139,6 +141,43 @@ int main (int argc, char** argv)
     patParam->setValueNotifyingHost (patParam->convertTo0to1 (0.0f));
     run (2);
     check (proc.getCurrentSlot() == 0, "pattern change while stopped is immediate");
+
+    // 6b. multi-out: BD on its own output, unaffected by Volume; back on MAIN when switched off
+    check (proc.getBusCount (false) == 9 && totalOuts == 10, "main stereo out + 8 mono drum outs");
+    {
+        auto* own = proc.apvts.getParameter ("bd_out");
+        auto* vol = proc.apvts.getParameter ("master");
+        const int bdCh = proc.getChannelIndexInProcessBlockBuffer (false, 1, 0);
+        auto hitBd = [&] (float& mainPeak, float& bdPeak, float& sdPeak)
+        {
+            mainPeak = bdPeak = sdPeak = 0;
+            for (int b = 0; b < 30; ++b)
+            {
+                juce::MidiBuffer m;
+                if (b == 0) m.addEvent (juce::MidiMessage::noteOn (10, 36, (juce::uint8) 100), 0);
+                proc.processBlock (buf, m);
+                for (int i = 0; i < block; ++i)
+                {
+                    mainPeak = juce::jmax (mainPeak, std::abs (buf.getSample (0, i)));
+                    bdPeak   = juce::jmax (bdPeak, std::abs (buf.getSample (bdCh, i)));
+                    sdPeak   = juce::jmax (sdPeak, std::abs (buf.getSample (bdCh + 1, i)));
+                }
+            }
+        };
+        float mainPeak, bdPeak, sdPeak;
+        run (200);   // let earlier sounds die away
+        own->setValueNotifyingHost (1.0f);
+        vol->setValueNotifyingHost (0.0f);   // Volume all the way down
+        hitBd (mainPeak, bdPeak, sdPeak);
+        check (mainPeak < 1e-4f && bdPeak > 0.05f && sdPeak == 0.0f,
+               ("BD Own Out: kick only on the BD output, ignores Volume (main " + juce::String (mainPeak, 5)
+                + ", BD out " + juce::String (bdPeak, 3) + ")").toRawUTF8());
+        own->setValueNotifyingHost (0.0f);
+        vol->setValueNotifyingHost (vol->getDefaultValue());
+        run (200);
+        hitBd (mainPeak, bdPeak, sdPeak);
+        check (mainPeak > 0.05f && bdPeak == 0.0f, "BD back on MAIN: kick in the main mix, BD output silent");
+    }
 
     // 7. state round trip
     juce::MemoryBlock state; proc.getStateInformation (state);

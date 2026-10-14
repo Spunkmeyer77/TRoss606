@@ -37,9 +37,10 @@ struct SoundParams
     float decay[kNumVoices] { 27.2f, 80, 80, 80, 80, 70, 70, 70 }; // %
     float bdAttack = 21.3f, sdSnappy = 75, cpNoise = 50, cyTone = 50;
     bool mute[kNumVoices] {}, solo[kNumVoices] {};
+    bool ownOut[kNumVoices] {};   // true = the drum leaves the main mix and plays on its own output
 };
 
-// 8 slots x 9 rows x 16 steps, one 16-bit mask per row. Edited from the UI thread,
+// 12 slots x 9 rows x 16 steps, one 16-bit mask per row. Edited from the UI thread,
 // read and recorded into from the audio thread, so every row is atomic.
 class PatternMemory
 {
@@ -87,7 +88,8 @@ public:
         v.cy_lvl = p.lvl[CY]; v.cy_tune = p.tune[CY]; v.cy_decay = p.decay[CY]; v.cy_tone = p.cyTone;
         double* mute[] = { &v.mute_bd, &v.mute_sd, &v.mute_lt, &v.mute_ht, &v.mute_cp, &v.mute_ch, &v.mute_oh, &v.mute_cy };
         double* solo[] = { &v.solo_bd, &v.solo_sd, &v.solo_lt, &v.solo_ht, &v.solo_cp, &v.solo_ch, &v.solo_oh, &v.solo_cy };
-        for (int i = 0; i < kNumVoices; ++i) { *mute[i] = p.mute[i] ? 1 : 0; *solo[i] = p.solo[i] ? 1 : 0; }
+        for (int i = 0; i < kNumVoices; ++i) { *mute[i] = p.mute[i] ? 1 : 0; *solo[i] = p.solo[i] ? 1 : 0; ownOut[i] = p.ownOut[i]; }
+        masterGain = p.master > -69.9f ? std::pow (10.0, p.master / 20.0) : 0.0;
     }
 
     // a hit from the keyboard (velocity 1..127; above 100 adds accent)
@@ -110,10 +112,31 @@ public:
         v.seqtick = std::fmod (v.seqtick + 1.0, 65536.0);
     }
 
+    // a drum's own output isn't there (standalone, or switched off by the host): keep it in the main mix
+    void setOwnOut (int voice, bool on) { ownOut[voice] = on; }
+
+    // one sample of the full mix (every drum, times Volume)
     inline float tick() { return (float) g->tick(); }
+
+    // one sample with routing: returns the main mix (drums on MAIN, times Volume);
+    // outs[i] = drum i when it is on its own output (not affected by Volume), else 0
+    inline float tick (float* outs)
+    {
+        g->tick();
+        double mainMix = 0.0;
+        for (int i = 0; i < kNumVoices; ++i)
+        {
+            const double v = g->vout[i];
+            if (ownOut[i]) outs[i] = (float) v;
+            else         { outs[i] = 0.0f; mainMix += v; }
+        }
+        return (float) (mainMix * masterGain);
+    }
 
 private:
     std::unique_ptr<GenVoices> g;
     int trigCount[kNumVoices] {};
+    bool ownOut[kNumVoices] {};
+    double masterGain = 0.5;
 };
 } // namespace tross606

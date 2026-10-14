@@ -6,7 +6,7 @@
 
 | Control | What it does |
 |---|---|
-| 8 drum channels (silver panel) | Tune / Decay / Level, plus Attack (BD), Snappy (SD), Noise (CP), Tone (CY). **M** mutes, **S** solos. Hover or drag a knob to see its value; double-click resets it |
+| 8 drum channels (silver panel) | Tune / Decay / Level, plus Attack (BD), Snappy (SD), Noise (CP), Tone (CY). **M** mutes, **S** solos, **OWN OUT** sends the drum to its own output. Hover or drag a knob to see its value; double-click resets it |
 | Master | Accent amount for accented steps and hits above velocity 100; Volume. The display shows the playing pattern (and the queued one) |
 | Step pads | 9 rows (ACC + 8 drums) × 16 steps, coloured in groups of four. Click to toggle, or drag along a row to paint. The LEDs above follow the playing step |
 | RUN | Sequencer on/off |
@@ -22,7 +22,22 @@ Velocity: velocities up to 100 scale the level, and anything above 100
 also adds the Accent.
 
 All 12 patterns are saved with your Live set, along with every knob. The window can be resized
-from its corner. Output is mono on both channels.
+from its corner.
+
+## Outputs
+
+| Output | Carries |
+|---|---|
+| Main (stereo) | Every drum whose OWN OUT is off, after Volume (the same mono mix on both channels) |
+| BD, SD, LT, HT, CP, CH, OH, CY (mono) | That drum alone while its OWN OUT is on: after its Level, Mute/Solo and accents, **not** affected by Volume |
+
+All drums start on the main output. Turn on a drum's **OWN OUT** and it leaves the main mix and plays on
+its own output instead. If the host has that output switched off, the drum stays in the main mix.
+
+**Ableton Live:** make an audio track for each separate drum, set **Audio From** to the TRoss 606 track,
+pick the output (for example `BD`) in the second menu, and set Monitor to **In**.
+
+The standalone app has only the main output, so it doesn't show the OWN OUT switches.
 
 The **standalone app** has no host transport, so it shows its own **PLAY** button and BPM read-out.
 

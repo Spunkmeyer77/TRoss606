@@ -65,10 +65,10 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    static constexpr int kWidth = 1120, kHeight = 455;
+    static constexpr int kWidth = 1120, kHeight = 473;
 
 private:
-    // everything is laid out at 1120 x 455 here; the editor scales it
+    // everything is laid out at 1120 x 473 here; the editor scales it
     struct Content : public juce::Component
     {
         explicit Content (Tross606Editor& e) : ed (e) { setOpaque (true); }
@@ -91,6 +91,7 @@ private:
     // standalone app only
     juce::TextButton playBtn { "PLAY" };
     juce::Slider bpmBox;
+    juce::TooltipWindow tooltips { this, 600 };
 
     int lastVersion = -1, lastStep = -2, lastSlot = -1, lastPending = -2, lastLen = -1, lastSel = -1;
 

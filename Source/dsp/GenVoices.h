@@ -725,6 +725,7 @@ struct GenVoices {
     };
 
     double fs_ = 44100.0;
+    double vout[8] = {};   // per-drum signals of the last tick (before the master volume)
     uint32_t rng_ = 0x12345678u;
 
     inline double noise_() {   // white noise in [-1, 1)
@@ -2583,7 +2584,16 @@ struct GenVoices {
         cy_mt = 1.0;
         if (mute_cy > 0.0 || (anysolo > 0.0 && solo_cy <= 0.0)) { cy_mt = 0.0; }
         cy_mg = cy_mg + (cy_mt - cy_mg) * 0.004;
-        total = (bd_out * bd_vg * lvlgain(bd_lvl) * bd_mg + sd_out * sd_vg * lvlgain(sd_lvl) * sd_mg + lt_out * lt_vg * lvlgain(lt_lvl) * lt_mg + ht_out * ht_vg * lvlgain(ht_lvl) * ht_mg + cp_out * cp_vg * lvlgain(cp_lvl) * cp_mg + ch_out * ch_vg * lvlgain(ch_lvl) * ch_mg + oh_out * oh_vg * lvlgain(oh_lvl) * oh_mg + cy_out * cy_vg * lvlgain(cy_lvl) * cy_mg) * lvlgain(master);
+        // each drum after its level, accent and mute/solo, before the master volume
+        vout[0] = bd_out * bd_vg * lvlgain(bd_lvl) * bd_mg;
+        vout[1] = sd_out * sd_vg * lvlgain(sd_lvl) * sd_mg;
+        vout[2] = lt_out * lt_vg * lvlgain(lt_lvl) * lt_mg;
+        vout[3] = ht_out * ht_vg * lvlgain(ht_lvl) * ht_mg;
+        vout[4] = cp_out * cp_vg * lvlgain(cp_lvl) * cp_mg;
+        vout[5] = ch_out * ch_vg * lvlgain(ch_lvl) * ch_mg;
+        vout[6] = oh_out * oh_vg * lvlgain(oh_lvl) * oh_mg;
+        vout[7] = cy_out * cy_vg * lvlgain(cy_lvl) * cy_mg;
+        total = (vout[0] + vout[1] + vout[2] + vout[3] + vout[4] + vout[5] + vout[6] + vout[7]) * lvlgain(master);
         h_ticklast = ticklast;
         h_bd_mg = bd_mg;
         h_sd_mg = sd_mg;

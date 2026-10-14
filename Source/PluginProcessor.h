@@ -34,6 +34,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    static BusesProperties makeBuses();
     juce::AudioProcessorValueTreeState apvts;
 
     // ---- pattern memory / sequencer, shared with the editor
@@ -68,6 +69,7 @@ private:
         std::atomic<float>* decay[tross606::kNumVoices];
         std::atomic<float>* mute[tross606::kNumVoices];
         std::atomic<float>* solo[tross606::kNumVoices];
+        std::atomic<float>* ownOut[tross606::kNumVoices];
         std::atomic<float> *bdAttack, *sdSnappy, *cpNoise, *cyTone, *accent, *master,
                            *seqOn, *seqLen, *pattern, *rec;
     } raw {};

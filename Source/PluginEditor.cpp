@@ -66,7 +66,7 @@ const char* kExtraIds[kNumVoices]    = { "bd_attack", "sd_snappy", nullptr, null
 const char* kExtraNames[kNumVoices]  = { "ATTACK", "SNAPPY", nullptr, nullptr, "NOISE", nullptr, nullptr, "TONE" };
 
 // ---- layout (1120 x 455)
-constexpr int kMargin = 18, kChanW = 120, kTopH = 222, kSeqY = 225;
+constexpr int kMargin = 18, kChanW = 120, kTopH = 240, kSeqY = 243;
 constexpr int kKnobRow1 = 93, kKnobRow2 = 146, kKnobD = 34;
 constexpr int kMasterX = 984, kMasterW = 118;
 int chanX (int v) { return kMargin + v * kChanW; }
@@ -388,6 +388,12 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
         if (kExtraIds[v] != nullptr) addKnob (kExtraIds[v], { x + 82, kKnobRow2 }, kKnobD);
         addButton (id + "_mute", "M", { x + 8,  196, 24, 15 }, "rubber").getProperties().set ("onColour", (juce::int64) col::muteOn.getARGB());
         addButton (id + "_solo", "S", { x + 88, 196, 24, 15 }, "rubber").getProperties().set ("onColour", (juce::int64) col::soloOn.getARGB());
+        if (! proc.isStandalone())   // the standalone app has only the main output
+        {
+            auto& own = addButton (id + "_out", "OWN OUT", { x + 30, 217, 60, 15 }, "rubber");
+            own.getProperties().set ("onColour", (juce::int64) col::orange.getARGB());
+            own.setTooltip ("On: this drum leaves the main mix and plays on its own mono output");
+        }
     }
     addKnob ("accent", { kMasterX + 30, 96 }, 40);
     addKnob ("master", { kMasterX + 88, 96 }, 40);
@@ -403,19 +409,19 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
     auto len = std::make_unique<juce::Slider> (juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox);
     len->getProperties().set ("seg", true);
     len->setMouseDragSensitivity (120);
-    len->setBounds (1034, 256, 48, 30);
+    len->setBounds (1034, 274, 48, 30);
     content.addAndMakeVisible (*len);
     sAtts.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (proc.apvts, "seqlen", *len));
     len->setDoubleClickReturnValue (true, 16.0);
     len->setTooltip ("Drag up/down to set the pattern length");
     sliders.push_back (std::move (len));
 
-    addButton ("seqon", "RUN", { 1027, 296, 62, 24 }, "key").getProperties().set ("led", true);
+    addButton ("seqon", "RUN", { 1027, 314, 62, 24 }, "key").getProperties().set ("led", true);
     clearBtn.getProperties().set ("style", "key");
-    clearBtn.setBounds (1027, 326, 62, 24);
+    clearBtn.setBounds (1027, 344, 62, 24);
     clearBtn.onClick = [this] { proc.clearCurrentPattern(); grid.repaint(); };
     content.addAndMakeVisible (clearBtn);
-    addButton ("rec", "REC", { 1027, 356, 62, 24 }, "rec").getProperties().set ("led", true);
+    addButton ("rec", "REC", { 1027, 374, 62, 24 }, "rec").getProperties().set ("led", true);
 
     if (proc.isStandalone())   // no host transport: own play button + tempo
     {
@@ -424,7 +430,7 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
         playBtn.setClickingTogglesState (true);
         playBtn.setToggleState (proc.internalPlay.load(), juce::dontSendNotification);
         playBtn.onClick = [this] { proc.internalPlay = playBtn.getToggleState(); };
-        playBtn.setBounds (1027, 390, 62, 24);
+        playBtn.setBounds (1027, 408, 62, 24);
         content.addAndMakeVisible (playBtn);
 
         bpmBox.setSliderStyle (juce::Slider::RotaryVerticalDrag);
@@ -436,7 +442,7 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
         bpmBox.setMouseDragSensitivity (300);
         bpmBox.textFromValueFunction = [] (double v) { return juce::String ((int) v); };
         bpmBox.onValueChange = [this] { proc.internalBpm = (float) bpmBox.getValue(); };
-        bpmBox.setBounds (1034, 431, 48, 18);
+        bpmBox.setBounds (1034, 449, 48, 18);
         content.addAndMakeVisible (bpmBox);
     }
 
@@ -550,15 +556,15 @@ void Tross606Editor::paintPanel (juce::Graphics& g)
         if (v < kNumVoices - 1)   // engraved divider
         {
             g.setColour (juce::Colours::black.withAlpha (0.25f));
-            g.fillRect (x + kChanW - 1, 60, 1, 154);
+            g.fillRect (x + kChanW - 1, 60, 1, 172);
             g.setColour (juce::Colours::white.withAlpha (0.45f));
-            g.fillRect (x + kChanW, 60, 1, 154);
+            g.fillRect (x + kChanW, 60, 1, 172);
         }
     }
 
     // master
     g.setColour (juce::Colours::black.withAlpha (0.05f));
-    g.fillRoundedRectangle ((float) kMasterX, 58.0f, (float) kMasterW, 158.0f, 6.0f);
+    g.fillRoundedRectangle ((float) kMasterX, 58.0f, (float) kMasterW, 176.0f, 6.0f);
     knobLabel ("ACCENT", kMasterX + 30, 63);
     knobLabel ("VOLUME", kMasterX + 88, 63);
     nameStrip ("MASTER", { kMasterX + 7, 172, kMasterW - 14, 17 });
@@ -573,7 +579,7 @@ void Tross606Editor::paintPanel (juce::Graphics& g)
     g.setFont (font (8.5f, false, 0.15f));
     g.drawText ("LENGTH", 1018, kSeqY + 12, 80, 12, juce::Justification::centred);
     if (proc.isStandalone())
-        g.drawText ("BPM", 1018, 419, 80, 10, juce::Justification::centred);
+        g.drawText ("BPM", 1018, 437, 80, 10, juce::Justification::centred);
 }
 
 void Tross606Editor::timerCallback()
