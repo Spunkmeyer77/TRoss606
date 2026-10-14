@@ -304,6 +304,28 @@ void StepGrid::mouseDrag (const juce::MouseEvent& e)
 }
 
 // ================================================================================================
+void NameStrip::paint (juce::Graphics& g)
+{
+    const auto r = getLocalBounds().toFloat();
+    const float t = juce::jlimit (0.0f, 1.0f, (float) (juce::Time::getMillisecondCounter() - lastHit) / 180.0f);
+    const auto flash = lastAccent ? juce::Colour (0xffffffff) : col::orange;
+    const auto bg = lastHit != 0 && t < 1.0f ? flash.interpolatedWith (col::stripBg, t) : col::stripBg;
+    g.setColour (bg);
+    g.fillRoundedRectangle (r, 2.0f);
+    g.setColour (bg.getPerceivedBrightness() > 0.5f ? col::stripBg : col::stripText);
+    g.setFont (font (10.0f, true, 0.15f));
+    g.drawText (title, getLocalBounds(), juce::Justification::centred);
+}
+
+void NameStrip::mouseDown (const juce::MouseEvent& e)
+{
+    lastAccent = e.mods.isShiftDown();
+    proc.panelHit (voice, lastAccent);
+    lastHit = juce::Time::getMillisecondCounter();
+    repaint();
+}
+
+// ================================================================================================
 // PatternPad sits at (918, kSeqY), 100 x 230
 juce::Rectangle<float> PatternPad::buttonRect (int slot)
 {
@@ -382,6 +404,11 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
     {
         const int x = chanX (v);
         const juce::String id = kVoiceIds[v];
+        auto strip = std::make_unique<NameStrip> (proc, v, kVoiceTitles[v]);
+        strip->setBounds (x + 8, 172, kChanW - 16, 17);
+        strip->setTooltip ("Click to play. Shift-click for an accented hit. Records into the pattern while REC is on and the song plays.");
+        content.addAndMakeVisible (*strip);
+        strips.push_back (std::move (strip));
         addKnob (id + "_tune",  { x + 30, kKnobRow1 }, kKnobD);
         addKnob (id + "_decay", { x + 82, kKnobRow1 }, kKnobD);
         addKnob (id + "_lvl",   { x + 30, kKnobRow2 }, kKnobD);
@@ -548,7 +575,6 @@ void Tross606Editor::paintPanel (juce::Graphics& g)
         knobLabel ("DECAY", x + 82, 63);
         knobLabel ("LEVEL", x + 30, 116);
         if (kExtraNames[v] != nullptr) knobLabel (kExtraNames[v], x + 82, 116);
-        nameStrip (kVoiceTitles[v], { x + 8, 172, kChanW - 16, 17 });
         g.setColour (col::softText);
         g.setFont (font (9.0f, false, 0.1f));
         g.drawText (kVoiceNotes[v], x + 32, 196, 56, 15, juce::Justification::centred);
@@ -596,5 +622,7 @@ void Tross606Editor::timerCallback()
         patternPad.repaint();
         lcd.repaint();
     }
+    for (auto& s : strips)
+        if (s->lastHit != 0 && juce::Time::getMillisecondCounter() - s->lastHit < 260) s->repaint();
     lastVersion = v; lastStep = st; lastSlot = slot; lastPending = pend; lastLen = len; lastSel = sel;
 }

@@ -35,6 +35,25 @@ private:
 };
 
 // 12 pattern buttons, 2 across x 6 down. LED = slot playing (blinks when queued), light cap = selected.
+// A drum's black name strip, played like a pad: click = hit, Shift-click = accented hit
+class NameStrip : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    NameStrip (Tross606Processor& p, int v, const juce::String& t) : proc (p), voice (v), title (t)
+    {
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    }
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    bool isFlashing() const { return juce::Time::getMillisecondCounter() - lastHit < 180; }
+    juce::uint32 lastHit = 0;
+    bool lastAccent = false;
+private:
+    Tross606Processor& proc;
+    int voice;
+    juce::String title;
+};
+
 class PatternPad : public juce::Component
 {
 public:
@@ -82,6 +101,7 @@ private:
     StepGrid grid { proc };
     PatternPad patternPad { proc };
     StatusLcd lcd { proc };
+    std::vector<std::unique_ptr<NameStrip>> strips;
 
     std::vector<std::unique_ptr<juce::Slider>> sliders;
     std::vector<std::unique_ptr<juce::Button>> buttons;

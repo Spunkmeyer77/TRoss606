@@ -211,6 +211,15 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     auto midiIt = midi.cbegin();
     const double q0 = ppq * 4.0;   // position in 16ths at the block start
 
+    // clicks on the drum name strips since the last block: play at the block start, record if REC is on
+    for (int r = hitRead.load (std::memory_order_relaxed); r != hitWrite.load (std::memory_order_acquire); r = (r + 1) % kHitQueue)
+    {
+        const auto hit = hitQueue[r];
+        engine.trigger (hit.voice, hit.velocity);
+        if (playing && recOn) recordHit (hit.voice, hit.velocity, q0, len);
+        hitRead.store ((r + 1) % kHitQueue, std::memory_order_release);
+    }
+
     for (int i = 0; i < numSamples; ++i)
     {
         const double q = q0 + i * sixteenthsPerSample;

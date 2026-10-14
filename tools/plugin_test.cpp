@@ -179,6 +179,35 @@ int main (int argc, char** argv)
         check (mainPeak > 0.05f && bdPeak == 0.0f, "BD back on MAIN: kick in the main mix, BD output silent");
     }
 
+    // 6c. name-strip pads: play when stopped (no recording); record (+ accent on Shift) while playing with REC on
+    {
+        run (200);
+        juce::uint16 before = pats.get (proc.getCurrentSlot(), 5);
+        proc.panelHit (4, false);   // clap, stopped
+        float p = 0;
+        for (int b = 0; b < 20; ++b) { juce::MidiBuffer m; proc.processBlock (buf, m); for (int i = 0; i < block; ++i) p = juce::jmax (p, std::abs (buf.getSample (0, i))); }
+        check (p > 0.02f && pats.get (proc.getCurrentSlot(), 5) == before, "clap pad plays while stopped and leaves the pattern alone");
+
+        const int slot = proc.getCurrentSlot();
+        pats.clear (slot);
+        host.playing = true; host.ppq = 0.0;
+        run (1);
+        host.ppq = 2.0;   // exactly step 9
+        proc.panelHit (1, true);    // snare, Shift-click
+        proc.panelHit (5, false);   // closed hat, normal click
+        run (1);
+        check (pats.cell (slot, 2, 8) && pats.cell (slot, 0, 8) && pats.cell (slot, 6, 8),
+               "pad clicks while playing: snare + accent and closed hat recorded on step 9");
+        auto* recP = proc.apvts.getParameter ("rec");
+        recP->setValueNotifyingHost (0.0f);
+        proc.panelHit (0, false);   // bass drum
+        run (1);
+        check (! pats.cell (slot, 1, 8) && ! pats.cell (slot, 1, 9), "with REC off a pad click only plays");
+        recP->setValueNotifyingHost (1.0f);
+        host.playing = false;
+        run (2);
+    }
+
     // 7. state round trip
     juce::MemoryBlock state; proc.getStateInformation (state);
     {

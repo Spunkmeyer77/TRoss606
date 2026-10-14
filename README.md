@@ -6,13 +6,13 @@
 
 | Control | What it does |
 |---|---|
-| 8 drum channels (silver panel) | Tune / Decay / Level, plus Attack (BD), Snappy (SD), Noise (CP), Tone (CY). **M** mutes, **S** solos, **OWN OUT** sends the drum to its own output. Hover or drag a knob to see its value; double-click resets it |
+| 8 drum channels (silver panel) | Tune / Decay / Level, plus Attack (BD), Snappy (SD), Noise (CP), Tone (CY). **M** mutes, **S** solos, **OWN OUT** sends the drum to its own output. Click a drum's black name strip to play it like a pad (Shift-click = accented hit). Hover or drag a knob to see its value; double-click resets it |
 | Master | Accent amount for accented steps and hits above velocity 100; Volume. The display shows the playing pattern (and the queued one) |
 | Step pads | 9 rows (ACC + 8 drums) × 16 steps, coloured in groups of four. Click to toggle, or drag along a row to paint. The LEDs above follow the playing step |
 | RUN | Sequencer on/off |
 | LENGTH | Pattern length, 1–16 steps: drag the red read-out up/down (steps past the length are dimmed) |
 | CLEAR | Clears the pattern that's playing |
-| REC | While the host is playing, keyboard hits are written into the nearest step. Velocity above 100 also sets the accent. On by default |
+| REC | While the host is playing, keyboard hits and name-strip clicks are written into the nearest step. Velocity above 100 also sets the accent. On by default |
 | PATTERN 1–12 | 12 pattern slots. While playing, a new slot waits until the current pattern reaches step 1. While stopped, it switches immediately. The LED shows which slot is playing; a blinking LED shows the slot that's queued |
 
 **Keyboard map (Ableton note names, C1 = MIDI 36):** BD C1/B0 · SD D1/E1 · LT A1/F1/G1 · HT D2/B1/C2 ·
