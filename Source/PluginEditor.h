@@ -3,7 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
 
-// Look of the Max for Live device: live.dial knobs, live.text buttons, live.numbox
+// Vintage drum-machine look: black knurled knobs on brushed silver, rubber buttons, LED pads
 class TrossLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
@@ -11,37 +11,47 @@ public:
     void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h, float pos, float start, float end, juce::Slider&) override;
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&, bool highlighted, bool down) override;
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
-    void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool highlighted, bool down) override;
+    void drawBubble (juce::Graphics&, juce::BubbleComponent&, const juce::Point<float>& tip, const juce::Rectangle<float>& body) override;
+    juce::Font getSliderPopupFont (juce::Slider&) override;
 };
 
-// The 9 x 16 step grid with the step LEDs above it. Click to toggle, drag to paint.
+// Lower section: step numbers, play LEDs and the 9 x 16 pad grid. Click to toggle, drag to paint.
 class StepGrid : public juce::Component
 {
 public:
-    explicit StepGrid (Tross606Processor& p) : proc (p) {}
+    explicit StepGrid (Tross606Processor& p) : proc (p) { setOpaque (true); }
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override { dragRow = -1; }
 
-    // geometry in this component's coordinates (it sits at x = 868, y = 19 of the device)
-    static juce::Rectangle<int> cellRect (int row, int step);
-    static juce::Rectangle<int> ledRect (int step);
+    static juce::Rectangle<float> padRect (int row, int step);
 
 private:
     Tross606Processor& proc;
     int dragRow = -1, lastDragStep = -1;
     bool dragValue = false;
-    bool hit (juce::Point<int>, int& row, int& step) const;
+    bool hit (juce::Point<float>, int& row, int& step) const;
 };
 
-// Vertical 1..8 pattern selector with the "playing" LEDs next to it
-class PatternTab : public juce::Component
+// 12 pattern buttons, 2 across x 6 down. LED = slot playing (blinks when queued), light cap = selected.
+class PatternPad : public juce::Component
 {
 public:
-    explicit PatternTab (Tross606Processor& p) : proc (p) {}
+    explicit PatternPad (Tross606Processor& p) : proc (p) { setOpaque (true); }
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
+    static juce::Rectangle<float> buttonRect (int slot);
+private:
+    Tross606Processor& proc;
+};
+
+// Amber read-out in the master section: playing pattern, and the queued one
+class StatusLcd : public juce::Component
+{
+public:
+    explicit StatusLcd (Tross606Processor& p) : proc (p) {}
+    void paint (juce::Graphics&) override;
 private:
     Tross606Processor& proc;
 };
@@ -55,13 +65,13 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    static constexpr int kWidth = 1300, kHeight = 167;
+    static constexpr int kWidth = 1120, kHeight = 455;
 
 private:
-    // all controls live here at the device's own pixel positions; the editor scales it
+    // everything is laid out at 1120 x 455 here; the editor scales it
     struct Content : public juce::Component
     {
-        explicit Content (Tross606Editor& e) : ed (e) {}
+        explicit Content (Tross606Editor& e) : ed (e) { setOpaque (true); }
         void paint (juce::Graphics& g) override { ed.paintPanel (g); }
         Tross606Editor& ed;
     };
@@ -70,7 +80,8 @@ private:
     TrossLookAndFeel lnf;
     Content content { *this };
     StepGrid grid { proc };
-    PatternTab tab { proc };
+    PatternPad patternPad { proc };
+    StatusLcd lcd { proc };
 
     std::vector<std::unique_ptr<juce::Slider>> sliders;
     std::vector<std::unique_ptr<juce::Button>> buttons;
@@ -81,11 +92,10 @@ private:
     juce::TextButton playBtn { "PLAY" };
     juce::Slider bpmBox;
 
-    int lastVersion = -1, lastStep = -2, lastSlot = -1, lastPending = -2;
-    int lastLen = -1, lastSel = -1;
+    int lastVersion = -1, lastStep = -2, lastSlot = -1, lastPending = -2, lastLen = -1, lastSel = -1;
 
-    juce::Slider& addDial (const juce::String& paramId, const juce::String& label, int x, int y);
-    juce::Button& addTextToggle (const juce::String& paramId, const juce::String& text, juce::Colour on, juce::Rectangle<int> r);
+    juce::Slider& addKnob (const juce::String& paramId, juce::Point<int> centre, int diameter);
+    juce::Button& addButton (const juce::String& paramId, const juce::String& text, juce::Rectangle<int> r, const char* style);
     void paintPanel (juce::Graphics&);
     void timerCallback() override;
 

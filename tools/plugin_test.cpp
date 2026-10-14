@@ -37,6 +37,11 @@ int main (int argc, char** argv)
     proc.setPlayConfigDetails (0, 2, sr, block);
     proc.prepareToPlay (sr, block);
     std::printf ("params: %d\n", (int) proc.getParameters().size());
+    check (std::abs (proc.apvts.getRawParameterValue ("bd_decay")->load() - 27.2f) < 0.01f
+           && std::abs (proc.apvts.getRawParameterValue ("bd_attack")->load() - 21.3f) < 0.01f,
+           "defaults: BD Decay 27.2 %, BD Attack 21.3 %");
+    check (proc.apvts.getParameter ("pattern")->getNumSteps() == 12, "12 pattern slots");
+    std::printf ("BD Decay shows as \"%s\"\n", proc.apvts.getParameter ("bd_decay")->getCurrentValueAsText().toRawUTF8());
 
     auto& pats = proc.patterns;
     auto put = [&] (int slot, int row, const char* s) { for (int i = 0; i < 16; ++i) pats.setCell (slot, row, i, s[i] == 'x'); };
@@ -48,6 +53,7 @@ int main (int argc, char** argv)
     put (1, 1, "x..x..x...x..x..");
     put (1, 5, "....x.......x...");
     put (1, 8, "x...............");
+    put (11, 1, "x.x.x.x.x.x.x.x.");
 
     juce::AudioBuffer<float> buf (2, block);
     juce::AudioBuffer<float> all (2, (int) sr * 9);
@@ -143,7 +149,7 @@ int main (int argc, char** argv)
         for (int s = 0; s < tross606::kNumSlots; ++s)
             for (int r = 0; r < tross606::kNumRows; ++r)
                 same &= other.patterns.get (s, r) == pats.get (s, r);
-        check (same, "all 8 patterns restored from the saved state");
+        check (same, "all 12 patterns restored from the saved state");
     }
     proc.apvts.getParameter ("bd_tune")->setValueNotifyingHost (0.25f);
     proc.setStateInformation (state.getData(), (int) state.getSize());
@@ -164,14 +170,15 @@ int main (int argc, char** argv)
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     std::printf ("editor size %d x %d\n", ed->getWidth(), ed->getHeight());
     juce::PNGImageFormat png;
+    const int baseW = ed->getWidth(), baseH = ed->getHeight();
     for (float scale : { 1.0f, 2.0f })
     {
-        ed->setSize ((int) (ed->getWidth() * scale), (int) (ed->getHeight() * scale));
+        ed->setSize ((int) (baseW * scale), (int) (baseH * scale));
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         auto pngFile = outDir.getChildFile ("editor_" + juce::String ((int) scale) + "x.png");
         pngFile.deleteFile();
         if (auto os = pngFile.createOutputStream()) png.writeImageToStream (img, *os);
-        ed->setSize (1300, 167);
+        ed->setSize (baseW, baseH);
     }
     ed.reset();
 

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(TRoss606 VERSION 0.1.0)
+project(TRoss606 VERSION 0.2.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -69,6 +69,6 @@ if(T606_BUILD_TESTS)
     juce_add_console_app(TRoss606Test PRODUCT_NAME "TRoss606Test")
     target_sources(TRoss606Test PRIVATE tools/plugin_test.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
     target_compile_definitions(TRoss606Test PRIVATE
-        JucePlugin_Name="TRoss 606" JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+        JucePlugin_Name="TRoss 606" JucePlugin_VersionString="${PROJECT_VERSION}" JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
     target_link_libraries(TRoss606Test PRIVATE juce::juce_audio_utils juce::juce_recommended_config_flags)
 endif()

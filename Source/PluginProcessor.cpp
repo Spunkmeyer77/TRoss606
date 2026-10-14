@@ -18,7 +18,7 @@ std::unique_ptr<APF> param (juce::String id, juce::String name, float lo, float 
                                   juce::AudioParameterFloatAttributes().withStringFromValueFunction (std::move (fmt)));
 }
 auto semis   = [] (float v, int) { return juce::String (v, 1) + " st"; };
-auto percent = [] (float v, int) { return juce::String (juce::roundToInt (v)) + " %"; };
+auto percent = [] (float v, int) { return juce::String (v, std::abs (v - std::round (v)) < 0.05f ? 0 : 1) + " %"; };
 auto decibel = [] (float v, int) { return v <= -69.9f ? juce::String ("-inf dB") : juce::String (v, 1) + " dB"; };
 
 std::unique_ptr<APF> level (juce::String id, juce::String name, float def) { return param (id, name, -70.0f, 6.0f, def, decibel); }
@@ -51,7 +51,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Tross606Processor::createLay
     l.add (onOff ("seqon", "Seq On", true));
     l.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { "seqlen", 1 }, "Seq Length", 1, 16, 16));
     l.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "pattern", 1 }, "Pattern",
-                                                         juce::StringArray { "1", "2", "3", "4", "5", "6", "7", "8" }, 0));
+                                                         juce::StringArray { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12" }, 0));
     l.add (onOff ("rec", "Record", true));
     return l;
 }

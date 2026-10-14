@@ -10,7 +10,7 @@ namespace tross606
 {
 enum Voice { BD, SD, LT, HT, CP, CH, OH, CY, kNumVoices };
 // sequencer rows: 0 = accent, 1..8 = the voices above (row = voice + 1)
-constexpr int kNumRows = 9, kNumSteps = 16, kNumSlots = 8;
+constexpr int kNumRows = 9, kNumSteps = 16, kNumSlots = 12;
 
 // keyboard note -> voice (same map as the device's MIDI input), -1 = not mapped
 inline int noteToVoice (int n)
@@ -35,8 +35,8 @@ struct SoundParams
     float master = -6, accent = 50;
     float lvl[kNumVoices]  { 0, 0, 0, 0, 0, 0, 0, 0 };   // dB, -70..6
     float tune[kNumVoices] { 2.2f, 0, 0, 0, 0, 0, 0, 0 }; // semitones
-    float decay[kNumVoices] { 80, 80, 80, 80, 80, 70, 70, 70 }; // %
-    float bdAttack = 30, sdSnappy = 75, cpNoise = 50, cyTone = 50;
+    float decay[kNumVoices] { 27.2f, 80, 80, 80, 80, 70, 70, 70 }; // %
+    float bdAttack = 21.3f, sdSnappy = 75, cpNoise = 50, cyTone = 50;
     bool mute[kNumVoices] {}, solo[kNumVoices] {};
 };
 
