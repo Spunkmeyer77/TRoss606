@@ -2,19 +2,6 @@
 
 606-style drum machine with a 16-step sequencer (AU / VST3 / LV2 / Standalone) by Ticco Ross, 2026.
 
-This is the plug-in version of the **TRoss 606** Max for Live device. The drum voices come from
-[analogcode/606-Inspired-Synth-Drums](https://github.com/analogcode/606-Inspired-Synth-Drums)
-(MIT, © 2026 Matthew Fecher), by way of the device's gen~ code.
-
-## How it was ported
-
-- **Drum voices:** `Source/dsp/GenVoices.h` is generated from the device's gen~ codebox by
-  `tools/gen2cpp.py`, so it does the same maths sample for sample: same envelopes, filters,
-  noise, clap and hi-hat tables. The original GenExpr is kept in `tools/gen/`. To regenerate:
-  `python3 tools/gen2cpp.py tools/gen/gen.genexpr tools/gen/table.txt Source/dsp/GenVoices.h`
-- **Sequencer and patterns:** the device's JavaScript (`tools/gen/seq.js`) is rewritten in
-  `Source/PluginProcessor.cpp`. It follows the host transport and stays sample-accurate.
-
 ## Using it
 
 | Control | What it does |
