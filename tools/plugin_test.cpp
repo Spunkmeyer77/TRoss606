@@ -38,9 +38,10 @@ int main (int argc, char** argv)
     proc.setRateAndBufferSizeDetails (sr, block);
     proc.prepareToPlay (sr, block);
     std::printf ("params: %d\n", (int) proc.getParameters().size());
-    check (std::abs (proc.apvts.getRawParameterValue ("bd_decay")->load() - 27.2f) < 0.01f
-           && std::abs (proc.apvts.getRawParameterValue ("bd_attack")->load() - 21.3f) < 0.01f,
-           "defaults: BD Decay 27.2 %, BD Attack 21.3 %");
+    auto pv = [&] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
+    check (std::abs (pv ("bd_tune") - 1.0f) < 0.01f && std::abs (pv ("bd_decay") - 15.8f) < 0.01f && pv ("bd_attack") < 0.01f
+           && std::abs (pv ("sd_tune")) < 0.01f && std::abs (pv ("sd_decay") - 80.0f) < 0.01f,
+           "defaults: BD Tune 1 st, Decay 15.8 %, Attack 0 %; SD Tune 0 st, Decay 80 %");
     check (proc.apvts.getParameter ("pattern")->getNumSteps() == 12, "12 pattern slots");
     std::printf ("BD Decay shows as \"%s\"\n", proc.apvts.getParameter ("bd_decay")->getCurrentValueAsText().toRawUTF8());
 
@@ -304,7 +305,7 @@ int main (int argc, char** argv)
     }
     proc.apvts.getParameter ("bd_tune")->setValueNotifyingHost (0.25f);
     proc.setStateInformation (state.getData(), (int) state.getSize());
-    check (std::abs (proc.apvts.getRawParameterValue ("bd_tune")->load() - 2.2f) < 0.01f, "parameters restored");
+    check (std::abs (proc.apvts.getRawParameterValue ("bd_tune")->load() - 1.0f) < 0.01f, "parameters restored");
 
     check (bad == 0, "no NaN / inf in the output");
     std::printf ("peak %.3f\n", peak);
