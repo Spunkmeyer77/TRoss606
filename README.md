@@ -46,7 +46,7 @@ The standalone app has only the main output, so it doesn't show the OWN OUT swit
 
 The **standalone app** has no host transport, so it shows its own **PLAY** button and BPM read-out (in the master section).
 
-Defaults: Bass Drum Tune 1 st, Decay 15.8 %, Attack 0 %; Snare Tune 0 st, Decay 80 %.
+Defaults: Bass Drum Tune 1 st, Decay 15.8 %, Attack 0 %; Snare Tune 0 st, Decay 80 %, Snappy 57.2 %.
 The build's version number is shown at the top right of the panel.
 
 ## Build on your Mac (macOS 12+)

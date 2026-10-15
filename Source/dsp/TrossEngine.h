@@ -35,7 +35,7 @@ struct SoundParams
     float lvl[kNumVoices]  { 0, 0, 0, 0, 0, 0, 0, 0 };   // dB, -70..6
     float tune[kNumVoices] { 1.0f, 0, 0, 0, 0, 0, 0, 0 }; // semitones
     float decay[kNumVoices] { 15.8f, 80, 80, 80, 80, 70, 70, 70 }; // %
-    float bdAttack = 0.0f, sdSnappy = 75, cpNoise = 50, cyTone = 50;
+    float bdAttack = 0.0f, sdSnappy = 57.2f, cpNoise = 50, cyTone = 50;
     bool mute[kNumVoices] {}, solo[kNumVoices] {};
     bool ownOut[kNumVoices] {};   // true = the drum leaves the main mix and plays on its own output
 };
