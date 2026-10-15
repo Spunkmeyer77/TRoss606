@@ -40,8 +40,8 @@ int main (int argc, char** argv)
     std::printf ("params: %d\n", (int) proc.getParameters().size());
     auto pv = [&] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
     check (std::abs (pv ("bd_tune") - 1.0f) < 0.01f && std::abs (pv ("bd_decay") - 15.8f) < 0.01f && pv ("bd_attack") < 0.01f
-           && std::abs (pv ("sd_tune")) < 0.01f && std::abs (pv ("sd_decay") - 80.0f) < 0.01f && std::abs (pv ("sd_snappy") - 57.2f) < 0.01f,
-           "defaults: BD Tune 1 st, Decay 15.8 %, Attack 0 %; SD Tune 0 st, Decay 80 %, Snappy 57.2 %");
+           && std::abs (pv ("sd_tune")) < 0.01f && std::abs (pv ("sd_decay") - 75.5f) < 0.01f && std::abs (pv ("sd_snappy") - 57.2f) < 0.01f,
+           "defaults: BD Tune 1 st, Decay 15.8 %, Attack 0 %; SD Tune 0 st, Decay 75.5 %, Snappy 57.2 %");
     check (proc.apvts.getParameter ("pattern")->getNumSteps() == 12, "12 pattern slots");
     std::printf ("BD Decay shows as \"%s\"\n", proc.apvts.getParameter ("bd_decay")->getCurrentValueAsText().toRawUTF8());
 
