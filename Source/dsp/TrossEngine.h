@@ -55,6 +55,13 @@ public:
         set (slot, row, m);
     }
     void clear (int slot) { for (int r = 0; r < kNumRows; ++r) set (slot, r, 0); }
+    void copySlot (int from, int to) { for (int r = 0; r < kNumRows; ++r) set (to, r, get (from, r)); }
+    bool isEmpty (int slot) const
+    {
+        for (int r = 1; r < kNumRows; ++r)   // the accent row alone plays nothing
+            if (get (slot, r) != 0) return false;
+        return true;
+    }
     int getVersion() const { return version.load(); }
 
 private:

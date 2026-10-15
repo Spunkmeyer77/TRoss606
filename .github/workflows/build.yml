@@ -113,6 +113,9 @@ jobs:
           chmod +x tools/package_linux.sh
           ./tools/package_linux.sh
 
+      - name: Add the manual
+        run: cp "docs/TRoss 606 Manual.pdf" dist/
+
       - uses: actions/upload-artifact@v4
         with:
           name: TRoss606-${{ env.VERSION }}-${{ matrix.name }}

@@ -378,12 +378,15 @@ void ExportKey::showMenu()
     m.addItem (1, "Pattern " + juce::String (slot + 1) + " (playing)" + (playingEmpty ? " - empty" : ""), ! playingEmpty);
     m.addItem (2, "All patterns, in a row (" + juce::String ((int) filled.size()) + " with notes)", ! filled.empty());
     m.addItem (3, "All patterns as separate files", ! filled.empty());
+    const auto chain = proc.getChain();
+    m.addItem (5, "The chain, in a row (" + juce::String ((int) chain.size()) + " steps)", ! chain.empty());
     m.addSeparator();
     m.addItem (4, "Tip: drag this key onto a MIDI track to drop the playing pattern as a clip", false);
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
-                     [safe = juce::Component::SafePointer<ExportKey> (this)] (int id)
+                     [safe = juce::Component::SafePointer<ExportKey> (this), chain] (int id)
                      {
                          if (safe == nullptr) return;
+                         if (id == 5) safe->exportChain (chain);
                          if (id == 1) safe->exportPlaying();
                          if (id == 2) safe->exportAllInARow();
                          if (id == 3) safe->exportAllSeparate();
@@ -415,6 +418,19 @@ void ExportKey::exportAllInARow()
 {
     auto midi = MidiExport::make (proc.patterns, nonEmptySlots(), length(), proc.currentBpm.load(), "TRoss 606 Patterns");
     chooser = std::make_unique<juce::FileChooser> ("Save all patterns as one MIDI file", exportStartFolder().getChildFile ("TRoss606 Patterns.mid"), "*.mid");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                          | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [midi] (const juce::FileChooser& fc)
+                          {
+                              const auto f = fc.getResult();
+                              if (f != juce::File()) MidiExport::write (midi, f.withFileExtension ("mid"));
+                          });
+}
+
+void ExportKey::exportChain (const std::vector<int>& chain)
+{
+    auto midi = MidiExport::make (proc.patterns, chain, length(), proc.currentBpm.load(), "TRoss 606 Chain");
+    chooser = std::make_unique<juce::FileChooser> ("Save the chain as one MIDI file", exportStartFolder().getChildFile ("TRoss606 Chain.mid"), "*.mid");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                           | juce::FileBrowserComponent::warnAboutOverwriting,
                           [midi] (const juce::FileChooser& fc)
@@ -465,10 +481,22 @@ void PatternPad::paint (juce::Graphics& g)
         const auto r = buttonRect (i);
         if (i == sel) drawKey (g, r, col::cream1, col::cream2, 4.0f, 2.0f);
         else          drawKey (g, r, col::grey1, col::grey2, 4.0f, 2.0f);
-        drawLed (g, { r.getX() + 6.5f, r.getY() + 6.5f }, 5.0f, i == cur || (i == pending && blink));
+        const bool chained = proc.getChainLength() > 0 && proc.isInChain (i);
+        if (chained && i != cur)   // in the chain: a dim LED; the one playing is bright
+        {
+            g.setColour (col::ledOn.withAlpha (0.45f));
+            g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre ({ r.getX() + 6.5f, r.getY() + 6.5f }));
+        }
+        else
+            drawLed (g, { r.getX() + 6.5f, r.getY() + 6.5f }, 5.0f, i == cur || (i == pending && blink));
         g.setColour (juce::Colour (0xff222222));
         g.setFont (font (10.0f, true));
         g.drawText (juce::String (i + 1), r.withTrimmedLeft (6.0f), juce::Justification::centred);
+        if (proc.patterns.isEmpty (i))   // small dash for empty slots
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.25f));
+            g.fillRect (r.getRight() - 9.0f, r.getBottom() - 5.0f, 5.0f, 1.5f);
+        }
     }
 }
 
@@ -477,6 +505,35 @@ void PatternPad::mouseDown (const juce::MouseEvent& e)
     for (int i = 0; i < kNumSlots; ++i)
         if (buttonRect (i).expanded (2.0f).contains (e.position))
         {
+            if (e.mods.isPopupMenu())   // right-click: copy, clear, chain
+            {
+                juce::PopupMenu copyTo;
+                for (int s = 0; s < kNumSlots; ++s) copyTo.addItem (100 + s, "Pattern " + juce::String (s + 1), s != i);
+                juce::PopupMenu m;
+                m.addSectionHeader ("Pattern " + juce::String (i + 1));
+                m.addSubMenu ("Copy to", copyTo);
+                m.addItem (1, "Clear", ! proc.patterns.isEmpty (i));
+                m.addSeparator();
+                m.addSectionHeader ("Chain  (Shift-click pattern buttons to build it)");
+                m.addItem (2, "Add pattern " + juce::String (i + 1) + " to the chain", proc.getChainLength() < Tross606Processor::kMaxChain);
+                m.addItem (3, "Remove the last chain step", proc.getChainLength() > 0);
+                m.addItem (4, "Clear the chain", proc.getChainLength() > 0);
+                m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
+                                 [safe = juce::Component::SafePointer<PatternPad> (this), i] (int id)
+                                 {
+                                     if (safe == nullptr) return;
+                                     if (id == 1) safe->proc.patterns.clear (i);
+                                     if (id == 2) safe->proc.chainAppend (i);
+                                     if (id == 3) safe->proc.chainRemoveLast();
+                                     if (id == 4) safe->proc.chainClear();
+                                     if (id >= 100) safe->proc.patterns.copySlot (i, id - 100);
+                                     safe->repaint();
+                                 });
+                return;
+            }
+            if (e.mods.isShiftDown()) { proc.chainAppend (i); repaint(); return; }   // build a chain
+            proc.chainClear();   // a plain click goes back to a single pattern
+            proc.selectSlot (i);
             if (auto* p = proc.apvts.getParameter ("pattern"))
             {
                 p->beginChangeGesture();
@@ -498,7 +555,9 @@ void StatusLcd::paint (juce::Graphics& g)
     g.drawRoundedRectangle (r.reduced (0.5f), 3.0f, 1.0f);
 
     const int cur = proc.getCurrentSlot(), pending = proc.getPendingSlot();
-    const juce::String txt = pending >= 0 ? "PAT " + juce::String (cur + 1) + " > " + juce::String (pending + 1)
+    const int chainN = proc.getChainLength();
+    const juce::String txt = chainN > 0 ? "CHN " + juce::String (juce::jmax (0, proc.getChainPos()) + 1) + "/" + juce::String (chainN) + " P" + juce::String (cur + 1)
+                           : pending >= 0 ? "PAT " + juce::String (cur + 1) + " > " + juce::String (pending + 1)
                                           : "PATTERN " + juce::String (cur + 1);
     g.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 11.5f, juce::Font::bold)));
     g.setColour (col::lcdText.withAlpha (0.3f));
@@ -733,6 +792,7 @@ void Tross606Editor::timerCallback()
 
     if (v != lastVersion || st != lastStep || slot != lastSlot || len != lastLen)
         grid.repaint();
+    if (v != lastVersion) patternPad.repaint();   // empty-slot dashes follow the pads
     if (slot != lastSlot || pend != lastPending || pend >= 0 || sel != lastSel)
     {
         patternPad.repaint();
@@ -740,5 +800,6 @@ void Tross606Editor::timerCallback()
     }
     for (auto& s : strips)
         if (s->lastHit != 0 && juce::Time::getMillisecondCounter() - s->lastHit < 260) s->repaint();
+    if (const int cv = proc.getChainVersion() * 64 + proc.getChainPos(); cv != lastChain) { patternPad.repaint(); lcd.repaint(); lastChain = cv; }
     lastVersion = v; lastStep = st; lastSlot = slot; lastPending = pend; lastLen = len; lastSel = sel;
 }

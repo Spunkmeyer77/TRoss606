@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(TRoss606 VERSION 0.5.1)
+project(TRoss606 VERSION 0.6.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

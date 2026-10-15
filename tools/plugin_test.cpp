@@ -248,6 +248,49 @@ int main (int argc, char** argv)
         check (tross606::MidiExport::isEmpty (pm, 0) && ! tross606::MidiExport::isEmpty (pm, 7), "empty patterns are detected");
     }
 
+    // 6e. copy + chain: copy pattern 1 to 4, chain 4,2 locked to the song position, saved with the state
+    {
+        const int len = 16;
+        pats.copySlot (0, 3);
+        bool same = true;
+        for (int r = 0; r < tross606::kNumRows; ++r) same &= pats.get (3, r) == pats.get (0, r);
+        check (same && ! pats.isEmpty (3), "Copy to: pattern 1 copied into pattern 4");
+
+        proc.chainAppend (3); proc.chainAppend (1);
+        check (proc.getChainLength() == 2, "chain built: 4, 2");
+        host.playing = true; host.ppq = 0.0;
+        std::vector<int> barSlots;
+        int prevStep = -1;
+        for (int b = 0; b < 1600 && barSlots.size() < 4; ++b)   // 4 bars at 120 BPM = 8 s
+        {
+            run (1);
+            const int st = proc.getPlayStep();
+            if (st == 0 && prevStep != 0) barSlots.push_back (proc.getCurrentSlot());
+            prevStep = st;
+        }
+        check (barSlots.size() == 4 && barSlots[0] == 3 && barSlots[1] == 1 && barSlots[2] == 3 && barSlots[3] == 1,
+               "chain plays 4, 2, 4, 2 bar by bar");
+        host.ppq = 4.0 * 5 + 0.5;   // jump into bar 6 -> chain step 2 -> pattern 2
+        run (60);
+        check (proc.getCurrentSlot() == 1 && proc.getChainPos() == 1, "after a jump the chain lands on the right pattern");
+
+        juce::MemoryBlock st; proc.getStateInformation (st);
+        Tross606Processor other;
+        other.setStateInformation (st.getData(), (int) st.getSize());
+        check (other.getChainLength() == 2 && other.getChain() == std::vector<int> ({ 3, 1 }), "chain saved and restored with the project");
+
+        auto chainMidi = tross606::MidiExport::make (pats, proc.getChain(), len, 120.0, "chain");
+        double endTick = 0;
+        for (auto* e : *chainMidi.getTrack (0)) endTick = juce::jmax (endTick, e->message.getTimeStamp());
+        check (std::abs (endTick - 2 * 16 * 24) < 0.5, "chain export = 2 patterns in a row");
+
+        proc.chainClear();
+        check (proc.getChainLength() == 0, "chain cleared");
+        host.playing = false;
+        run (2);
+        pats.clear (3);
+    }
+
     // 7. state round trip
     juce::MemoryBlock state; proc.getStateInformation (state);
     {

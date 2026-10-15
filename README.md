@@ -14,6 +14,8 @@
 | CLEAR | Clears the pattern that's playing |
 | REC | While the host is playing, keyboard hits and name-strip clicks are written into the nearest step. Velocity above 100 also sets the accent. On by default |
 | PATTERN 1–12 | 12 pattern slots. While playing, a new slot waits until the current pattern reaches step 1. While stopped, it switches immediately. The LED shows which slot is playing; a blinking LED shows the slot that's queued |
+| Pattern buttons, right-click | **Copy to** another slot, **Clear**, and chain options. Empty slots show a small dash |
+| Pattern buttons, Shift-click | Add that pattern to the **chain** (up to 32 steps). The chain is locked to the song position; a plain click ends it |
 | EXPORT MIDI | Click for a menu: export the playing pattern, all patterns in a row, or all patterns as separate `.mid` files. Drag the key onto a MIDI track to drop the playing pattern in as a clip. Steps are 16th notes, accented steps velocity 127, channel 10, TRoss 606's note map |
 
 **Keyboard map (Ableton note names, C1 = MIDI 36):** BD C1/B0 · SD D1/E1 · LT A1/F1/G1 · HT D2/B1/C2 ·
@@ -24,6 +26,8 @@ also adds the Accent.
 
 All 12 patterns are saved with your Live set, along with every knob. The window can be resized
 from its corner.
+
+The full manual is `docs/TRoss 606 Manual.pdf`; it's also included in every build download.
 
 ## Outputs
 

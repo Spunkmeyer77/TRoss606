@@ -72,6 +72,7 @@ private:
     void exportPlaying();
     void exportAllInARow();
     void exportAllSeparate();
+    void exportChain (const std::vector<int>& chain);
     std::vector<int> nonEmptySlots() const;
     int length() const;
 };
@@ -136,7 +137,7 @@ private:
     juce::Slider bpmBox;
     juce::TooltipWindow tooltips { this, 600 };
 
-    int lastVersion = -1, lastStep = -2, lastSlot = -1, lastPending = -2, lastLen = -1, lastSel = -1;
+    int lastVersion = -1, lastStep = -2, lastSlot = -1, lastPending = -2, lastLen = -1, lastSel = -1, lastChain = -1;
 
     juce::Slider& addKnob (const juce::String& paramId, juce::Point<int> centre, int diameter);
     juce::Button& addButton (const juce::String& paramId, const juce::String& text, juce::Rectangle<int> r, const char* style);
