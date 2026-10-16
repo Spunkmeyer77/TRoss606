@@ -6,8 +6,9 @@
 
 | Control | What it does |
 |---|---|
-| 8 drum channels (silver panel) | Tune / Decay / Level, plus Attack (BD), Snappy (SD), Noise (CP), Tone (CY). **M** mutes, **S** solos, **OWN OUT** sends the drum to its own output. Click a drum's black name strip to play it like a pad (Shift-click = accented hit). Hover or drag a knob to see its value; double-click resets it |
+| 8 drum channels (silver panel) | Tune / Decay / Level, plus Attack (BD), Snappy (SD), Noise (CP), Tone (CY). **M** mutes, **S** solos, **OWN OUT** sends the drum to its own output. Click a drum's black name strip to play it like a pad (Shift-click = accented hit; hold Option/Alt and press for note repeat at the REPEAT rate). Hover or drag a knob to see its value; double-click resets it |
 | Master | Accent amount for accented steps and hits above velocity 100; Volume. The display shows the playing pattern (and the queued one) |
+| REPEAT (master section) | Note-repeat rate: 1/4, 1/8 or 1/16. Hold Option (Alt) and press a drum's name strip: it repeats at this rate, locked to the song grid, and records with REC on |
 | Step pads | 9 rows (ACC + 8 drums) × 16 steps, coloured in groups of four. Click to toggle, or drag along a row to paint. The LEDs above follow the playing step |
 | RUN | Sequencer on/off |
 | LENGTH | Pattern length, 1–16 steps: drag the red read-out up/down (steps past the length are dimmed) |
@@ -46,7 +47,7 @@ The standalone app has only the main output, so it doesn't show the OWN OUT swit
 
 The **standalone app** has no host transport, so it shows its own **PLAY** button and BPM read-out (in the master section).
 
-Defaults: Bass Drum Tune 1 st, Decay 15.8 %, Attack 0 %; Snare Tune 0 st, Decay 75.5 %, Snappy 57.2 %.
+Defaults: Bass Drum Tune 1 st, Decay 15.8 %, Attack 0 %; Snare Tune 0 st, Decay 75.5 %, Snappy 57.2 %; Clap Tune 2.6 st, Decay 3.2 %, Noise 37.9 %.
 The build's version number is shown at the top right of the panel.
 
 ## Build on your Mac (macOS 12+)

@@ -321,9 +321,27 @@ void NameStrip::paint (juce::Graphics& g)
 void NameStrip::mouseDown (const juce::MouseEvent& e)
 {
     lastAccent = e.mods.isShiftDown();
-    proc.panelHit (voice, lastAccent);
+    if (e.mods.isAltDown())   // Option/Alt held: note repeat at the REPEAT rate until the mouse is released
+    {
+        repeating = true;
+        lastRepeatHits = proc.getRepeatHits (voice);
+        proc.startRepeat (voice, lastAccent);
+    }
+    else
+        proc.panelHit (voice, lastAccent);
     lastHit = juce::Time::getMillisecondCounter();
     repaint();
+}
+
+void NameStrip::mouseUp (const juce::MouseEvent&)
+{
+    if (repeating) { repeating = false; proc.stopRepeat (voice); }
+}
+
+void NameStrip::pollRepeat()
+{
+    const int h = proc.getRepeatHits (voice);
+    if (h != lastRepeatHits) { lastRepeatHits = h; lastHit = juce::Time::getMillisecondCounter(); repaint(); }
 }
 
 // ================================================================================================
@@ -580,7 +598,7 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
         const juce::String id = kVoiceIds[v];
         auto strip = std::make_unique<NameStrip> (proc, v, kVoiceTitles[v]);
         strip->setBounds (x + 8, 172, kChanW - 16, 17);
-        strip->setTooltip ("Click to play. Shift-click for an accented hit. Records into the pattern while REC is on and the song plays.");
+        strip->setTooltip ("Click to play. Shift-click for an accented hit. Hold Option (Alt) and press to repeat at the REPEAT rate. Records into the pattern while REC is on and the song plays.");
         content.addAndMakeVisible (*strip);
         strips.push_back (std::move (strip));
         addKnob (id + "_tune",  { x + 30, kKnobRow1 }, kKnobD);
@@ -627,14 +645,31 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
     exportKey.setTooltip ("Click: export patterns as MIDI files. Drag onto a MIDI track: drop the playing pattern as a clip.");
     content.addAndMakeVisible (exportKey);
 
+    // NOTE REPEAT rate (1/4, 1/8, 1/16): a knob and a read-out on the same parameter
+    repeatKnob.setSliderStyle (juce::Slider::RotaryVerticalDrag);
+    repeatKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    repeatKnob.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f, juce::MathConstants<float>::pi * 2.75f, true);
+    repeatKnob.setMouseDragSensitivity (90);
+    repeatKnob.setBounds (990, 198, 34, 34);
+    repeatKnob.setTooltip ("Note repeat rate: hold Option (Alt) and press a drum name to repeat it");
+    content.addAndMakeVisible (repeatKnob);
+    sAtts.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (proc.apvts, "repeat_rate", repeatKnob));
+    repeatBox.setSliderStyle (juce::Slider::RotaryVerticalDrag);
+    repeatBox.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    repeatBox.getProperties().set ("seg", true);
+    repeatBox.getProperties().set ("segSize", 12.0f);
+    repeatBox.setMouseDragSensitivity (90);
+    repeatBox.setBounds (1034, 211, 58, 20);
+    content.addAndMakeVisible (repeatBox);
+    sAtts.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (proc.apvts, "repeat_rate", repeatBox));
+
     if (proc.isStandalone())   // no host transport: own play button + tempo
     {
         playBtn.getProperties().set ("style", "key");
-        playBtn.getProperties().set ("led", true);
         playBtn.setClickingTogglesState (true);
         playBtn.setToggleState (proc.internalPlay.load(), juce::dontSendNotification);
         playBtn.onClick = [this] { proc.internalPlay = playBtn.getToggleState(); };
-        playBtn.setBounds (991, 202, 50, 24);
+        playBtn.setBounds (1025, 440, 34, 22);
         content.addAndMakeVisible (playBtn);
 
         bpmBox.setSliderStyle (juce::Slider::RotaryVerticalDrag);
@@ -644,9 +679,9 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
         bpmBox.setRange (40.0, 240.0, 1.0);
         bpmBox.setValue (proc.internalBpm.load(), juce::dontSendNotification);
         bpmBox.setMouseDragSensitivity (300);
-        bpmBox.textFromValueFunction = [] (double v) { return juce::String ((int) v) + " BPM"; };
+        bpmBox.textFromValueFunction = [] (double v) { return juce::String ((int) v); };
         bpmBox.onValueChange = [this] { proc.internalBpm = (float) bpmBox.getValue(); };
-        bpmBox.setBounds (1046, 204, 50, 20);
+        bpmBox.setBounds (1062, 441, 30, 20);
         content.addAndMakeVisible (bpmBox);
     }
 
@@ -771,6 +806,9 @@ void Tross606Editor::paintPanel (juce::Graphics& g)
     knobLabel ("ACCENT", kMasterX + 30, 63);
     knobLabel ("VOLUME", kMasterX + 88, 63);
     nameStrip ("MASTER", { kMasterX + 7, 172, kMasterW - 14, 17 });
+    g.setColour (col::printText);
+    g.setFont (font (8.5f, false, 0.1f));
+    g.drawText ("REPEAT", 1034, 199, 58, 11, juce::Justification::centred);
 
     // ---- dark sequencer section
     g.setColour (col::orange);
@@ -799,7 +837,10 @@ void Tross606Editor::timerCallback()
         lcd.repaint();
     }
     for (auto& s : strips)
+    {
+        s->pollRepeat();
         if (s->lastHit != 0 && juce::Time::getMillisecondCounter() - s->lastHit < 260) s->repaint();
+    }
     if (const int cv = proc.getChainVersion() * 64 + proc.getChainPos(); cv != lastChain) { patternPad.repaint(); lcd.repaint(); lastChain = cv; }
     lastVersion = v; lastStep = st; lastSlot = slot; lastPending = pend; lastLen = len; lastSel = sel;
 }

@@ -70,6 +70,11 @@ public:
         hitWrite.store (next, std::memory_order_release);
     }
 
+    // note repeat: Option/Alt held on a name strip (UI thread starts/stops; the audio thread plays)
+    void startRepeat (int voice, bool accent) { repeatAccent = accent; repeatVoice = voice; ++repeatPress; }
+    void stopRepeat (int voice)               { if (repeatVoice.load() == voice) repeatVoice = -1; }
+    int  getRepeatHits (int voice) const      { return repeatHits[voice].load(); }
+
     // Standalone app only: there is no host transport, so it gets its own play button and tempo
     bool isStandalone() const { return wrapperType == wrapperType_Standalone; }
     std::atomic<bool>  internalPlay { false };
@@ -97,6 +102,13 @@ private:
     std::atomic<int> hitWrite { 0 }, hitRead { 0 };
     int lastPatternParam = 0;
 
+    std::atomic<int> repeatVoice { -1 }, repeatPress { 0 };
+    std::atomic<bool> repeatAccent { false };
+    std::atomic<int> repeatHits[tross606::kNumVoices] {};
+    int lastRepeatPress = 0;
+    juce::int64 repeatLastTick = 0;
+    double repeatCountdown = 0.0;
+
     // transport following
     bool wasPlaying = false;
     juce::int64 lastSixteenth = 0;
@@ -111,7 +123,7 @@ private:
         std::atomic<float>* solo[tross606::kNumVoices];
         std::atomic<float>* ownOut[tross606::kNumVoices];
         std::atomic<float> *bdAttack, *sdSnappy, *cpNoise, *cyTone, *accent, *master,
-                           *seqOn, *seqLen, *pattern, *rec;
+                           *seqOn, *seqLen, *pattern, *rec, *repeatRate;
     } raw {};
 
     void pullParams();

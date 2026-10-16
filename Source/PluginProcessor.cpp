@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <array>
 
 using namespace tross606;
 
@@ -63,6 +64,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout Tross606Processor::createLay
     l.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "pattern", 1 }, "Pattern",
                                                          juce::StringArray { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12" }, 0));
     l.add (onOff ("rec", "Record", true));
+    l.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "repeat_rate", 1 }, "Repeat Rate",
+                                                         juce::StringArray { "1/4", "1/8", "1/16" }, 2));
     return l;
 }
 
@@ -79,6 +82,7 @@ Tross606Processor::Tross606Processor()
     }
     raw.bdAttack = p ("bd_attack"); raw.sdSnappy = p ("sd_snappy"); raw.cpNoise = p ("cp_noise"); raw.cyTone = p ("cy_tone");
     raw.accent = p ("accent"); raw.master = p ("master");
+    raw.repeatRate = p ("repeat_rate");
     raw.seqOn = p ("seqon"); raw.seqLen = p ("seqlen"); raw.pattern = p ("pattern"); raw.rec = p ("rec");
 }
 
@@ -275,6 +279,26 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         hitRead.store ((r + 1) % kHitQueue, std::memory_order_release);
     }
 
+    // ---- note repeat (Option/Alt held on a name strip): a first hit now, then one on every
+    // 1/4, 1/8 or 1/16 of the song grid while playing, or at that rate from the press while stopped
+    const int rv = repeatVoice.load();
+    const double rate16 = std::array<double, 3> { 4.0, 2.0, 1.0 } [(size_t) juce::jlimit (0, 2, (int) raw.repeatRate->load())];
+    const int repVel = repeatAccent.load() ? 127 : 100;
+    const double samplesPerRate = rate16 / sixteenthsPerSample;
+    auto repeatFire = [&] (double q)
+    {
+        engine.trigger (rv, repVel);
+        if (playing && recOn) recordHit (rv, repVel, q, len);
+        repeatHits[rv].fetch_add (1);
+    };
+    if (rv >= 0 && repeatPress.load() != lastRepeatPress)
+    {
+        lastRepeatPress = repeatPress.load();
+        repeatFire (q0);
+        repeatLastTick = (juce::int64) std::floor (q0 / rate16 + 1e-9);
+        repeatCountdown = samplesPerRate;
+    }
+
     for (int i = 0; i < numSamples; ++i)
     {
         const double q = q0 + i * sixteenthsPerSample;
@@ -303,6 +327,21 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
             if (voice < 0) continue;
             engine.trigger (voice, m.getVelocity());
             if (playing && recOn) recordHit (voice, m.getVelocity(), q, len);
+        }
+
+        if (rv >= 0)
+        {
+            if (playing)
+            {
+                const double qi = q0 + i * sixteenthsPerSample;
+                const auto tick = (juce::int64) std::floor (qi / rate16 + 1e-9);
+                if (tick != repeatLastTick) { repeatLastTick = tick; repeatFire (qi); }
+            }
+            else if ((repeatCountdown -= 1.0) <= 0.0)
+            {
+                repeatCountdown += samplesPerRate;
+                repeatFire (q0);
+            }
         }
 
         const float s = engine.tick (drumSig);

@@ -40,8 +40,9 @@ int main (int argc, char** argv)
     std::printf ("params: %d\n", (int) proc.getParameters().size());
     auto pv = [&] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
     check (std::abs (pv ("bd_tune") - 1.0f) < 0.01f && std::abs (pv ("bd_decay") - 15.8f) < 0.01f && pv ("bd_attack") < 0.01f
-           && std::abs (pv ("sd_tune")) < 0.01f && std::abs (pv ("sd_decay") - 75.5f) < 0.01f && std::abs (pv ("sd_snappy") - 57.2f) < 0.01f,
-           "defaults: BD Tune 1 st, Decay 15.8 %, Attack 0 %; SD Tune 0 st, Decay 75.5 %, Snappy 57.2 %");
+           && std::abs (pv ("sd_tune")) < 0.01f && std::abs (pv ("sd_decay") - 75.5f) < 0.01f && std::abs (pv ("sd_snappy") - 57.2f) < 0.01f
+           && std::abs (pv ("cp_tune") - 2.6f) < 0.01f && std::abs (pv ("cp_decay") - 3.2f) < 0.01f && std::abs (pv ("cp_noise") - 37.9f) < 0.01f,
+           "defaults: BD Tune 1 st, Decay 15.8 %, Attack 0 %; SD Tune 0 st, Decay 75.5 %, Snappy 57.2 %; CP Tune 2.6 st, Decay 3.2 %, Noise 37.9 %");
     check (proc.apvts.getParameter ("pattern")->getNumSteps() == 12, "12 pattern slots");
     std::printf ("BD Decay shows as \"%s\"\n", proc.apvts.getParameter ("bd_decay")->getCurrentValueAsText().toRawUTF8());
 
@@ -290,6 +291,49 @@ int main (int argc, char** argv)
         host.playing = false;
         run (2);
         pats.clear (3);
+    }
+
+    // 6f. note repeat (Option-click held on a name strip)
+    {
+        auto* rate = proc.apvts.getParameter ("repeat_rate");
+        auto stepsOf = [&] (int slot, int row) { juce::String s; for (int i = 0; i < 16; ++i) s << (pats.cell (slot, row, i) ? "x" : "."); return s; };
+        const int slot = proc.getCurrentSlot();
+        auto oneBar = [&] (int voice, float rateIndex)
+        {
+            pats.clear (slot);
+            rate->setValueNotifyingHost (rate->convertTo0to1 (rateIndex));
+            host.playing = true; host.ppq = 0.0;
+            run (1);
+            host.ppq = 0.0;
+            proc.startRepeat (voice, false);
+            run (400);            // one bar at 120 BPM = 2 s = 200 blocks; hold for two
+            proc.stopRepeat (voice);
+            run (5);
+            host.playing = false; run (2);
+        };
+        oneBar (5, 2.0f);   // closed hat at 1/16
+        const auto ch16 = stepsOf (slot, 6);
+        check (ch16 == "xxxxxxxxxxxxxxxx", ("repeat 1/16 records every step (" + ch16 + ")").toRawUTF8());
+        oneBar (0, 0.0f);   // bass drum at 1/4
+        const auto bd4 = stepsOf (slot, 1);
+        check (bd4 == "x...x...x...x...", ("repeat 1/4 records steps 1, 5, 9, 13 (" + bd4 + ")").toRawUTF8());
+        oneBar (1, 1.0f);   // snare at 1/8
+        const auto sd8 = stepsOf (slot, 2);
+        check (sd8 == "x.x.x.x.x.x.x.x.", ("repeat 1/8 records every other step (" + sd8 + ")").toRawUTF8());
+
+        // stopped: plays at the rate from the press, records nothing
+        pats.clear (slot);
+        rate->setValueNotifyingHost (rate->convertTo0to1 (1.0f));   // 1/8 at 120 BPM = 4 per second
+        const int before = proc.getRepeatHits (4);
+        proc.startRepeat (4, false);
+        run (100);   // 1 s
+        proc.stopRepeat (4);
+        const int hits = proc.getRepeatHits (4) - before;
+        run (50);
+        const int after = proc.getRepeatHits (4) - before;
+        check (hits >= 4 && hits <= 5 && after == hits && pats.isEmpty (slot),
+               ("repeat while stopped: " + juce::String (hits) + " hits in 1 s at 1/8, stops on release, pattern untouched").toRawUTF8());
+        rate->setValueNotifyingHost (rate->convertTo0to1 (2.0f));
     }
 
     // 7. state round trip

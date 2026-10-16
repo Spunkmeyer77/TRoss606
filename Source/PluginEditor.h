@@ -45,12 +45,16 @@ public:
     }
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void pollRepeat();   // called by the editor's timer: flash on each note-repeat hit
     bool isFlashing() const { return juce::Time::getMillisecondCounter() - lastHit < 180; }
     juce::uint32 lastHit = 0;
     bool lastAccent = false;
 private:
     Tross606Processor& proc;
     int voice;
+    bool repeating = false;
+    int lastRepeatHits = 0;
     juce::String title;
 };
 
@@ -126,6 +130,7 @@ private:
     StatusLcd lcd { proc };
     std::vector<std::unique_ptr<NameStrip>> strips;
     ExportKey exportKey { proc };
+    juce::Slider repeatKnob, repeatBox;
 
     std::vector<std::unique_ptr<juce::Slider>> sliders;
     std::vector<std::unique_ptr<juce::Button>> buttons;
