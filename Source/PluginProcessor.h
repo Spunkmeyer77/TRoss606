@@ -75,6 +75,18 @@ public:
     void stopRepeat (int voice)               { if (repeatVoice.load() == voice) repeatVoice = -1; }
     int  getRepeatHits (int voice) const      { return repeatHits[voice].load(); }
 
+    // flams (right-click a pad): clear or apply to a whole row of the playing pattern
+    void clearRowFlams (int row)                       { patterns.setFlams (currentSlot.load(), row, 0); }
+    void flamWholeRow (int row, uint8_t style)
+    {
+        const int slot = currentSlot.load();
+        const auto steps = patterns.get (slot, row);
+        patterns.setFlams (slot, row, steps);
+        for (int s = 0; s < tross606::kNumSteps; ++s)
+            if ((steps >> s) & 1) patterns.setFlamStyle (slot, row, s, style);
+    }
+    std::atomic<int> graceCount { 0 };   // grace notes played (for the tests)
+
     // Standalone app only: there is no host transport, so it gets its own play button and tempo
     bool isStandalone() const { return wrapperType == wrapperType_Standalone; }
     std::atomic<bool>  internalPlay { false };
@@ -128,6 +140,14 @@ private:
 
     void pullParams();
     void doStep (int step, long long absStep, int len, bool seqOn);
+    void doGrace (int step, long long absStep, int len, juce::int64 lookSamples);
+
+    // grace notes waiting to play (audio thread only)
+    static constexpr int kMaxSched = 64;
+    struct Sched { int voice = 0, velocity = 0; juce::int64 at = 0; };
+    Sched sched[kMaxSched];
+    int numSched = 0;
+    juce::int64 sampleClock = 0, lastGraceSixteenth = 0;
     void recordHit (int voice, int velocity, double sixteenthPos, int len);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Tross606Processor)

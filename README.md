@@ -10,6 +10,7 @@
 | Master | Accent amount for accented steps and hits above velocity 100; Volume. The display shows the playing pattern (and the queued one) |
 | REPEAT (master section) | Note-repeat rate: 1/4, 1/8 or 1/16. Hold Option (Alt) and press a drum's name strip: it repeats at this rate, locked to the song grid, and records with REC on |
 | Step pads | 9 rows (ACC + 8 drums) × 16 steps, coloured in groups of four. Click to toggle, or drag along a row to paint. The LEDs above follow the playing step |
+| Step pads, right-click | The step menu, the only place to set **flams**: Flam (1 grace note), Drag (2) or Ruff (3), with Spacing (12, 25, 40, 60 ms; 25 by default) and Grace note level (30–100 %; 60 by default). Also: use this flam on every hit in the row, or remove all flams in the row. A flammed pad shows small LEDs on its left edge |
 | RUN | Sequencer on/off |
 | LENGTH | Pattern length, 1–16 steps: drag the red read-out up/down (steps past the length are dimmed) |
 | CLEAR | Clears the pattern that's playing |
@@ -17,7 +18,8 @@
 | PATTERN 1–12 | 12 pattern slots. While playing, a new slot waits until the current pattern reaches step 1. While stopped, it switches immediately. The LED shows which slot is playing; a blinking LED shows the slot that's queued |
 | Pattern buttons, right-click | **Copy to** another slot, **Clear**, and chain options. Empty slots show a small dash |
 | Pattern buttons, Shift-click | Add that pattern to the **chain** (up to 32 steps). The chain is locked to the song position; a plain click ends it |
-| EXPORT MIDI | Click for a menu: export the playing pattern, all patterns in a row, or all patterns as separate `.mid` files. Drag the key onto a MIDI track to drop the playing pattern in as a clip. Steps are 16th notes, accented steps velocity 127, channel 10, TRoss 606's note map |
+| TRoss 606 logo | Opens the **About** window: version, build date, format and host, contact (ticcoross@gmail.com), a quick reference and **OPEN THE MANUAL** (the PDF manual is built into the plug-in) |
+| EXPORT MIDI | Click for a menu: export the playing pattern, all patterns in a row, or all patterns as separate `.mid` files. Drag the key onto a MIDI track to drop the playing pattern in as a clip. Steps are 16th notes, accented steps velocity 127, channel 10, TRoss 606's note map. Flams are written as grace notes just before the step |
 
 **Keyboard map (Ableton note names, C1 = MIDI 36):** BD C1/B0 · SD D1/E1 · LT A1/F1/G1 · HT D2/B1/C2 ·
 CP D#1 · CH F#1/G#1 · OH A#1 · CY C#2/A2/D#2/E2/G2.
@@ -28,7 +30,7 @@ also adds the Accent.
 All 12 patterns are saved with your Live set, along with every knob. The window can be resized
 from its corner.
 
-The full manual is `docs/TRoss 606 Manual.pdf`; it's also included in every build download.
+The full manual is `docs/TRoss 606 Manual.pdf`; it's also included in every build download, and built into the plug-in (click the logo, then OPEN THE MANUAL).
 
 ## Outputs
 
@@ -47,7 +49,7 @@ The standalone app has only the main output, so it doesn't show the OWN OUT swit
 
 The **standalone app** has no host transport, so it shows its own **PLAY** button and BPM read-out (in the master section).
 
-Defaults: Bass Drum Tune 1 st, Decay 15.8 %, Attack 0 %; Snare Tune 0 st, Decay 75.5 %, Snappy 57.2 %; Clap Tune 2.6 st, Decay 3.2 %, Noise 37.9 %.
+Defaults: Bass Drum Tune 1 st, Decay 15.8 %, Attack 0 %; Snare Tune 0 st, Decay 75.5 %, Snappy 57.2 %; Clap Tune 2.6 st, Decay 100 %, Noise 37.9 %.
 The build's version number is shown at the top right of the panel.
 
 ## Build on your Mac (macOS 12+)

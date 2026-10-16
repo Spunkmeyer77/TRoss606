@@ -2,6 +2,7 @@
 // No JUCE in here, so it can be tested on its own (tools/render_test.cpp).
 #pragma once
 #include "GenVoices.h"
+#include <algorithm>
 #include <atomic>
 #include <memory>
 
@@ -34,10 +35,40 @@ struct SoundParams
     float master = -6, accent = 50;
     float lvl[kNumVoices]  { 0, 0, 0, 0, 0, 0, 0, 0 };   // dB, -70..6
     float tune[kNumVoices] { 1.0f, 0, 0, 0, 2.6f, 0, 0, 0 }; // semitones
-    float decay[kNumVoices] { 15.8f, 75.5f, 80, 80, 3.2f, 70, 70, 70 }; // %
+    float decay[kNumVoices] { 15.8f, 75.5f, 80, 80, 100.0f, 70, 70, 70 }; // %
     float bdAttack = 0.0f, sdSnappy = 57.2f, cpNoise = 37.9f, cyTone = 50;
     bool mute[kNumVoices] {}, solo[kNumVoices] {};
     bool ownOut[kNumVoices] {};   // true = the drum leaves the main mix and plays on its own output
+};
+
+// ---- how a flam plays, per step: one byte (same format as TRoss Seq).
+//   bits 0-1: grace notes  (0 or 1 = flam: 1, 2 = drag: 2, 3 = ruff: 3)
+//   bits 2-4: spacing      (0 = default 25 ms, 1..4 = the kSpacingMs presets)
+//   bits 5-7: grace level  (0 = default 60 %, 1..4 = the kLevelPct presets)
+struct FlamStyle
+{
+    static constexpr int kNumSpacings = 5, kNumLevels = 5;
+    static constexpr float kSpacingMs[kNumSpacings] = { 25.0f, 12.0f, 25.0f, 40.0f, 60.0f };   // [0] = default
+    static constexpr float kLevelPct[kNumLevels]    = { 60.0f, 30.0f, 50.0f, 75.0f, 100.0f };  // [0] = default
+    static constexpr float kMaxSpacingMs = 60.0f;   // sets how far ahead grace notes are looked for
+
+    int graces = 1, spacing = 0, level = 0;
+
+    static FlamStyle decode (uint8_t b)
+    {
+        FlamStyle f;
+        f.graces = (b & 3) <= 1 ? 1 : (b & 3);
+        f.spacing = std::min ((b >> 2) & 7, kNumSpacings - 1);
+        f.level = std::min ((b >> 5) & 7, kNumLevels - 1);
+        return f;
+    }
+    uint8_t encode() const
+    {
+        const int gr = graces <= 1 ? 0 : std::min (graces, 3);
+        return (uint8_t) (gr | (std::clamp (spacing, 0, kNumSpacings - 1) << 2) | (std::clamp (level, 0, kNumLevels - 1) << 5));
+    }
+    float spacingMs() const { return kSpacingMs[spacing]; }
+    float levelPct() const  { return kLevelPct[level]; }
 };
 
 // 12 slots x 9 rows x 16 steps, one 16-bit mask per row. Edited from the UI thread,
@@ -46,7 +77,37 @@ class PatternMemory
 {
 public:
     uint16_t get (int slot, int row) const          { return masks[slot][row].load (std::memory_order_relaxed); }
-    void set (int slot, int row, uint16_t m)       { masks[slot][row].store (m, std::memory_order_relaxed); ++version; }
+    void set (int slot, int row, uint16_t m)
+    {
+        masks[slot][row].store (m, std::memory_order_relaxed);
+        // writing a row also drops flams on steps that are now off
+        const auto before = flams[slot][row].load (std::memory_order_relaxed);
+        if ((before & ~m) != 0) setFlams (slot, row, (uint16_t) (before & m));
+        ++version;
+    }
+
+    // ---- flams: grace notes just before a step (drum rows only; a flam needs its step on)
+    uint16_t getFlams (int slot, int row) const     { return flams[slot][row].load (std::memory_order_relaxed); }
+    void setFlams (int slot, int row, uint16_t m)
+    {
+        const auto before = flams[slot][row].load (std::memory_order_relaxed);
+        const auto now = (uint16_t) (m & get (slot, row));
+        flams[slot][row].store (now, std::memory_order_relaxed);
+        for (int s = 0; s < kNumSteps; ++s)   // a flam that's gone forgets its style
+            if ((((before & ~now) >> s) & 1) != 0) styles[slot][row][s].store (0, std::memory_order_relaxed);
+        ++version;
+    }
+    uint8_t getFlamStyle (int slot, int row, int step) const  { return styles[slot][row][step].load (std::memory_order_relaxed); }
+    void setFlamStyle (int slot, int row, int step, uint8_t b) { styles[slot][row][step].store (b, std::memory_order_relaxed); ++version; }
+    FlamStyle flamStyle (int slot, int row, int step) const   { return FlamStyle::decode (getFlamStyle (slot, row, step)); }
+    bool flam (int slot, int row, int step) const  { return (getFlams (slot, row) >> step) & 1; }
+    void setFlam (int slot, int row, int step, bool on)
+    {
+        if (row == 0) return;   // no flams on the accent row
+        auto m = getFlams (slot, row);
+        m = on ? (uint16_t) (m | (1u << step)) : (uint16_t) (m & ~(1u << step));
+        setFlams (slot, row, m);
+    }
     bool cell (int slot, int row, int step) const  { return (get (slot, row) >> step) & 1; }
     void setCell (int slot, int row, int step, bool on)
     {
@@ -55,7 +116,15 @@ public:
         set (slot, row, m);
     }
     void clear (int slot) { for (int r = 0; r < kNumRows; ++r) set (slot, r, 0); }
-    void copySlot (int from, int to) { for (int r = 0; r < kNumRows; ++r) set (to, r, get (from, r)); }
+    void copySlot (int from, int to)
+    {
+        for (int r = 0; r < kNumRows; ++r)
+        {
+            set (to, r, get (from, r));
+            setFlams (to, r, getFlams (from, r));
+            for (int s = 0; s < kNumSteps; ++s) setFlamStyle (to, r, s, getFlamStyle (from, r, s));
+        }
+    }
     bool isEmpty (int slot) const
     {
         for (int r = 1; r < kNumRows; ++r)   // the accent row alone plays nothing
@@ -66,6 +135,8 @@ public:
 
 private:
     std::atomic<uint16_t> masks[kNumSlots][kNumRows] {};
+    std::atomic<uint16_t> flams[kNumSlots][kNumRows] {};
+    std::atomic<uint8_t> styles[kNumSlots][kNumRows][kNumSteps] {};
     std::atomic<int> version { 0 };
 };
 

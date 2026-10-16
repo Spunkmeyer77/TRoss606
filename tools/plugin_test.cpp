@@ -3,6 +3,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../Source/PluginProcessor.h"
 #include "../Source/MidiExport.h"
+#include "../Source/PluginEditor.h"
 
 struct FakeHost : juce::AudioPlayHead
 {
@@ -41,8 +42,8 @@ int main (int argc, char** argv)
     auto pv = [&] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
     check (std::abs (pv ("bd_tune") - 1.0f) < 0.01f && std::abs (pv ("bd_decay") - 15.8f) < 0.01f && pv ("bd_attack") < 0.01f
            && std::abs (pv ("sd_tune")) < 0.01f && std::abs (pv ("sd_decay") - 75.5f) < 0.01f && std::abs (pv ("sd_snappy") - 57.2f) < 0.01f
-           && std::abs (pv ("cp_tune") - 2.6f) < 0.01f && std::abs (pv ("cp_decay") - 3.2f) < 0.01f && std::abs (pv ("cp_noise") - 37.9f) < 0.01f,
-           "defaults: BD Tune 1 st, Decay 15.8 %, Attack 0 %; SD Tune 0 st, Decay 75.5 %, Snappy 57.2 %; CP Tune 2.6 st, Decay 3.2 %, Noise 37.9 %");
+           && std::abs (pv ("cp_tune") - 2.6f) < 0.01f && std::abs (pv ("cp_decay") - 100.0f) < 0.01f && std::abs (pv ("cp_noise") - 37.9f) < 0.01f,
+           "defaults: BD Tune 1 st, Decay 15.8 %, Attack 0 %; SD Tune 0 st, Decay 75.5 %, Snappy 57.2 %; CP Tune 2.6 st, Decay 100 %, Noise 37.9 %");
     check (proc.apvts.getParameter ("pattern")->getNumSteps() == 12, "12 pattern slots");
     std::printf ("BD Decay shows as \"%s\"\n", proc.apvts.getParameter ("bd_decay")->getCurrentValueAsText().toRawUTF8());
 
@@ -336,6 +337,46 @@ int main (int argc, char** argv)
         rate->setValueNotifyingHost (rate->convertTo0to1 (2.0f));
     }
 
+    // 6g. flams: grace notes before the step, kept with the pattern
+    {
+        const int slot = proc.getCurrentSlot();
+        pats.clear (slot);
+        pats.setCell (slot, 2, 4, true);   // snare on step 5
+        pats.setCell (slot, 1, 0, true);   // plain kick on step 1
+        tross606::FlamStyle drag; drag.graces = 2;
+        pats.setFlam (slot, 2, 4, true);
+        pats.setFlamStyle (slot, 2, 4, drag.encode());
+        check (pats.flam (slot, 2, 4) && pats.flamStyle (slot, 2, 4).graces == 2, "drag set on SD step 5");
+        pats.setFlam (slot, 0, 3, true);
+        check (! pats.flam (slot, 0, 3), "no flams on the accent row");
+
+        const int g0 = proc.graceCount.load();
+        host.playing = true; host.ppq = 0.0;
+        run (400);   // two bars
+        host.playing = false; run (2);
+        const int graces = proc.graceCount.load() - g0;
+        check (graces == 4, ("drag plays 2 grace notes per bar (" + juce::String (graces) + " in 2 bars)").toRawUTF8());
+
+        // copy keeps flams; switching the step off drops its flam
+        pats.copySlot (slot, 9);
+        check (pats.flam (9, 2, 4) && pats.flamStyle (9, 2, 4).graces == 2, "Copy to: flams copied with the pattern");
+        pats.setCell (9, 2, 4, false);
+        check (! pats.flam (9, 2, 4), "step off drops its flam");
+        pats.clear (9);
+
+        proc.flamWholeRow (1, drag.encode());
+        check (pats.flam (slot, 1, 0), "flam on every hit in the row");
+        proc.clearRowFlams (1);
+        check (pats.getFlams (slot, 1) == 0, "remove all flams in the row");
+
+        // MIDI export writes the grace notes
+        auto midi = tross606::MidiExport::make (pats, { slot }, 16, 120.0, "flam");
+        int ons = 0;
+        if (auto* tr = midi.getTrack (0))
+            for (auto* ev : *tr) if (ev->message.isNoteOn()) ++ons;
+        check (ons == 4, ("MIDI export: kick + snare + 2 grace notes (" + juce::String (ons) + " notes)").toRawUTF8());
+    }
+
     // 7. state round trip
     juce::MemoryBlock state; proc.getStateInformation (state);
     {
@@ -346,6 +387,8 @@ int main (int argc, char** argv)
             for (int r = 0; r < tross606::kNumRows; ++r)
                 same &= other.patterns.get (s, r) == pats.get (s, r);
         check (same, "all 12 patterns restored from the saved state");
+        const int sl = proc.getCurrentSlot();
+        check (other.patterns.flam (sl, 2, 4) && other.patterns.flamStyle (sl, 2, 4).graces == 2, "flams restored from the saved state");
     }
     proc.apvts.getParameter ("bd_tune")->setValueNotifyingHost (0.25f);
     proc.setStateInformation (state.getData(), (int) state.getSize());
@@ -375,6 +418,21 @@ int main (int argc, char** argv)
         pngFile.deleteFile();
         if (auto os = pngFile.createOutputStream()) png.writeImageToStream (img, *os);
         ed->setSize (baseW, baseH);
+    }
+    // About window, and the manual inside the plug-in
+    if (auto* te = dynamic_cast<Tross606Editor*> (ed.get()))
+    {
+        te->showAbout();
+        check (te->isAboutShowing(), "logo click opens the About window");
+        auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+        auto pngFile = outDir.getChildFile ("about.png");
+        pngFile.deleteFile();
+        if (auto os = pngFile.createOutputStream()) png.writeImageToStream (img, *os);
+    }
+    {
+        auto man = AboutOverlay::writeManual();
+        juce::MemoryBlock mb; man.loadFileAsData (mb);
+        check (man.existsAsFile() && mb.getSize() > 10000 && juce::String ((const char*) mb.getData(), 5) == "%PDF-", "manual PDF built in and written out");
     }
     ed.reset();
 

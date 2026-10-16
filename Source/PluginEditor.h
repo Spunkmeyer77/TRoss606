@@ -26,6 +26,7 @@ public:
     void mouseUp (const juce::MouseEvent&) override { dragRow = -1; }
 
     static juce::Rectangle<float> padRect (int row, int step);
+    void showStepMenu (int row, int step);   // right-click a drum pad: the step and its flam
 
 private:
     Tross606Processor& proc;
@@ -102,6 +103,36 @@ private:
     Tross606Processor& proc;
 };
 
+// The About window: opens over the panel when you click the TRoss 606 logo.
+// Click anywhere (or press Esc) to close it.
+class AboutOverlay : public juce::Component
+{
+public:
+    explicit AboutOverlay (Tross606Processor& p);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    // the manual built into the plug-in, written to a temporary file; returns it (or an empty File)
+    static juce::File writeManual();
+    juce::TextButton manualBtn { "OPEN THE MANUAL" };
+    static constexpr const char* kContact = "ticcoross@gmail.com";
+    juce::HyperlinkButton contactLink { kContact, juce::URL (juce::String ("mailto:") + kContact) };
+    void mouseDown (const juce::MouseEvent&) override { setVisible (false); }
+    bool keyPressed (const juce::KeyPress& k) override { if (k == juce::KeyPress::escapeKey) { setVisible (false); return true; } return false; }
+    juce::Rectangle<float> card() const;
+    static juce::String formatAndHost (const Tross606Processor&);
+private:
+    Tross606Processor& proc;
+};
+
+// Invisible click area over the logo
+class LogoButton : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    LogoButton() { setMouseCursor (juce::MouseCursor::PointingHandCursor); setTooltip ("About TRoss 606"); }
+    void mouseUp (const juce::MouseEvent& e) override { if (onClick && getLocalBounds().contains (e.getPosition())) onClick(); }
+    std::function<void()> onClick;
+};
+
 class Tross606Editor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -141,12 +172,18 @@ private:
     juce::TextButton playBtn { "PLAY" };
     juce::Slider bpmBox;
     juce::TooltipWindow tooltips { this, 600 };
+    LogoButton logoBtn;
+    AboutOverlay about { proc };
 
     int lastVersion = -1, lastStep = -2, lastSlot = -1, lastPending = -2, lastLen = -1, lastSel = -1, lastChain = -1;
 
     juce::Slider& addKnob (const juce::String& paramId, juce::Point<int> centre, int diameter);
     juce::Button& addButton (const juce::String& paramId, const juce::String& text, juce::Rectangle<int> r, const char* style);
     void paintPanel (juce::Graphics&);
+public:
+    void showAbout();
+    bool isAboutShowing() const { return about.isVisible(); }
+private:
     void timerCallback() override;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Tross606Editor)

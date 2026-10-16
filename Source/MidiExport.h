@@ -46,6 +46,19 @@ struct MidiExport
                     {
                         const int t = start + s * kTicksPerStep;
                         const auto vel = (juce::uint8) (accent ? kAccentVelocity : kVelocity);
+                        if (p.flam (slot, v + 1, s))   // grace notes just before, softer (flam 1, drag 2, ruff 3)
+                        {
+                            const auto fs = p.flamStyle (slot, v + 1, s);
+                            const int span = juce::jmax (1, juce::roundToInt (fs.spacingMs() / 1000.0 * bpm / 60.0 * kTicksPerQuarter));
+                            const int gap = juce::jmax (1, span / fs.graces);
+                            const auto gv = (juce::uint8) juce::jlimit (1, 100, juce::roundToInt (vel * fs.levelPct() / 100.0f));
+                            for (int k = 0; k < fs.graces; ++k)
+                            {
+                                const int gt = juce::jmax (0, t - span + k * gap);
+                                seq.addEvent (juce::MidiMessage::noteOn (kChannel, noteFor (v), gv), gt);
+                                seq.addEvent (juce::MidiMessage::noteOff (kChannel, noteFor (v)), juce::jmin (t, gt + juce::jmax (1, gap * 3 / 4)));
+                            }
+                        }
                         seq.addEvent (juce::MidiMessage::noteOn (kChannel, noteFor (v), vel), t);
                         seq.addEvent (juce::MidiMessage::noteOff (kChannel, noteFor (v)), t + kNoteTicks);
                     }

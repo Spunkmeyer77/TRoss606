@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(TRoss606 VERSION 0.7.0)
+project(TRoss606 VERSION 0.8.0)
+string(TIMESTAMP T606_BUILD_DATE "%d %b %Y" UTC)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -46,6 +47,9 @@ juce_add_plugin(TRoss606
     VST3_CATEGORIES Instrument Drum
     COPY_PLUGIN_AFTER_BUILD ${T606_COPY_PLUGINS})
 
+# the manual, built into the plug-in (opened from the About window)
+juce_add_binary_data(TRoss606Data SOURCES "docs/TRoss 606 Manual.pdf")
+
 target_sources(TRoss606 PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
@@ -54,10 +58,12 @@ target_sources(TRoss606 PRIVATE
 target_compile_definitions(TRoss606 PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0)
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    T606_BUILD_DATE="${T606_BUILD_DATE}")
 
 target_link_libraries(TRoss606
     PRIVATE
+        TRoss606Data
         juce::juce_audio_utils
     PUBLIC
         juce::juce_recommended_config_flags
@@ -70,6 +76,7 @@ if(T606_BUILD_TESTS)
     juce_add_console_app(TRoss606Test PRODUCT_NAME "TRoss606Test")
     target_sources(TRoss606Test PRIVATE tools/plugin_test.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
     target_compile_definitions(TRoss606Test PRIVATE
-        JucePlugin_Name="TRoss 606" JucePlugin_VersionString="${PROJECT_VERSION}" JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
-    target_link_libraries(TRoss606Test PRIVATE juce::juce_audio_utils juce::juce_recommended_config_flags)
+        JucePlugin_Name="TRoss 606" JucePlugin_VersionString="${PROJECT_VERSION}" JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        T606_BUILD_DATE="${T606_BUILD_DATE}")
+    target_link_libraries(TRoss606Test PRIVATE TRoss606Data juce::juce_audio_utils juce::juce_recommended_config_flags)
 endif()

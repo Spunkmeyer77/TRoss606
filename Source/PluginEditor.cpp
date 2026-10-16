@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "MidiExport.h"
+#include "BinaryData.h"
 
 using namespace tross606;
 
@@ -249,7 +250,30 @@ void StepGrid::paint (juce::Graphics& g)
             g.fillRoundedRectangle (r, 3.0f);
 
             const auto c = r.getCentre();
-            if (on)
+            if (on && proc.patterns.flam (slot, row, s))   // flam: 1-3 tiny LEDs on the pad's left edge, main LED moves right
+            {
+                const auto fs = proc.patterns.flamStyle (slot, row, s);
+                const auto cm = juce::Point<float> (r.getX() + r.getWidth() * 0.6f, c.y);
+                g.setColour (juce::Colour (0xff1a1a1a));
+                g.fillEllipse (juce::Rectangle<float> (11.0f, 11.0f).withCentre (cm));
+                drawLed (g, cm, 8.0f, true);
+                static const float ys[4][3] = { {}, { 0.5f }, { 0.28f, 0.72f }, { 0.2f, 0.5f, 0.8f } };
+                const float gx = r.getX() + 5.5f;
+                for (int k = 0; k < fs.graces; ++k)
+                {
+                    const juce::Point<float> gc { gx, r.getY() + r.getHeight() * ys[fs.graces][k] };
+                    g.setColour (juce::Colour (0xff1a1a1a));   // dark socket, so it shows on every pad colour
+                    const float sd = fs.graces == 3 ? 4.4f : 5.2f;
+                    g.fillEllipse (juce::Rectangle<float> (sd, sd).withCentre (gc));
+                    drawLed (g, gc, fs.graces == 3 ? 2.9f : 3.4f, true);
+                }
+                if (fs.spacing != 0 || fs.level != 0)   // its own spacing / level: a small mark under the main LED
+                {
+                    g.setColour (juce::Colour (0xff1a1a1a).withAlpha (0.55f));
+                    g.fillRect (cm.x - 5.0f, r.getBottom() - 2.5f, 10.0f, 1.2f);
+                }
+            }
+            else if (on)
             {
                 g.setColour (juce::Colour (0xff1a1a1a));
                 g.fillEllipse (juce::Rectangle<float> (11.0f, 11.0f).withCentre (c));
@@ -287,6 +311,12 @@ void StepGrid::mouseDown (const juce::MouseEvent& e)
 {
     int row, step;
     if (! hit (e.position, row, step)) return;
+    if (e.mods.isPopupMenu())   // right-click: step menu with the flam settings (flams live only here)
+    {
+        dragRow = -1;
+        if (row > 0) showStepMenu (row, step);
+        return;
+    }
     const int slot = proc.getCurrentSlot();
     dragValue = ! proc.patterns.cell (slot, row, step);
     dragRow = row; lastDragStep = step;
@@ -302,6 +332,61 @@ void StepGrid::mouseDrag (const juce::MouseEvent& e)
     lastDragStep = step;
     proc.patterns.setCell (proc.getCurrentSlot(), row, step, dragValue);
     repaint();
+}
+
+// right-click on a drum pad: the step and its flam / drag / ruff
+void StepGrid::showStepMenu (int row, int step)
+{
+    auto& pm = proc.patterns;
+    const int slot = proc.getCurrentSlot();
+    const bool on = pm.cell (slot, row, step), fl = on && pm.flam (slot, row, step);
+    const auto fs = pm.flamStyle (slot, row, step);
+
+    juce::PopupMenu m;
+    m.addSectionHeader (juce::String (kVoiceTitles[row - 1]) + "  -  step " + juce::String (step + 1));
+    m.addItem (1, on ? "Step off" : "Step on");
+    m.addSeparator();
+    m.addSectionHeader ("Flam");
+    m.addItem (10, "No flam", true, ! fl);
+    m.addItem (11, "Flam  (1 grace note)", true, fl && fs.graces == 1);
+    m.addItem (12, "Drag  (2 grace notes)", true, fl && fs.graces == 2);
+    m.addItem (13, "Ruff  (3 grace notes)", true, fl && fs.graces == 3);
+    juce::PopupMenu sp, lv;
+    // spacing 25 ms appears once, as the default
+    sp.addItem (20, "25 ms  (default)", true, fl && (fs.spacing == 0 || fs.spacing == 2));
+    for (int i : { 1, 3, 4 })
+        sp.addItem (20 + i, juce::String (FlamStyle::kSpacingMs[i], 0) + " ms", true, fl && fs.spacing == i);
+    lv.addItem (30, juce::String (FlamStyle::kLevelPct[0], 0) + " %  (default)", true, fl && fs.level == 0);
+    for (int i = 1; i < FlamStyle::kNumLevels; ++i)
+        lv.addItem (30 + i, juce::String (FlamStyle::kLevelPct[i], 0) + " %", true, fl && fs.level == i);
+    m.addSubMenu ("Spacing  (before the step)", sp);
+    m.addSubMenu ("Grace note level", lv);
+    m.addSeparator();
+    m.addItem (40, "Use this flam on every hit in this row", fl);
+    m.addItem (41, "Remove all flams in this row", pm.getFlams (slot, row) != 0);
+
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (
+                         localAreaToGlobal (padRect (row, step).toNearestInt())),
+                     [safe = juce::Component::SafePointer<StepGrid> (this), row, step, slot] (int id)
+                     {
+                         if (safe == nullptr || id <= 0) return;
+                         auto& p = safe->proc;
+                         auto& mem = p.patterns;
+                         auto style = mem.flamStyle (slot, row, step);
+                         auto ensureFlam = [&]
+                         {
+                             if (! mem.cell (slot, row, step)) mem.setCell (slot, row, step, true);
+                             if (! mem.flam (slot, row, step)) { mem.setFlam (slot, row, step, true); style = FlamStyle(); }
+                         };
+                         if (id == 1)  mem.setCell (slot, row, step, ! mem.cell (slot, row, step));
+                         if (id == 10) mem.setFlam (slot, row, step, false);
+                         if (id >= 11 && id <= 13) { ensureFlam(); style.graces = id - 10; mem.setFlamStyle (slot, row, step, style.encode()); }
+                         if (id >= 20 && id < 20 + FlamStyle::kNumSpacings) { ensureFlam(); style.spacing = id - 20; mem.setFlamStyle (slot, row, step, style.encode()); }
+                         if (id >= 30 && id < 30 + FlamStyle::kNumLevels) { ensureFlam(); style.level = id - 30; mem.setFlamStyle (slot, row, step, style.encode()); }
+                         if (id == 40) p.flamWholeRow (row, mem.getFlamStyle (slot, row, step));
+                         if (id == 41) p.clearRowFlams (row);
+                         safe->repaint();
+                     });
 }
 
 // ================================================================================================
@@ -685,6 +770,12 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
         content.addAndMakeVisible (bpmBox);
     }
 
+    logoBtn.setBounds (kMargin, 12, 300, 38);
+    logoBtn.onClick = [this] { showAbout(); };
+    content.addAndMakeVisible (logoBtn);
+    content.addChildComponent (about);   // on top of everything, hidden until the logo is clicked
+    about.setBounds (0, 0, kWidth, kHeight);
+
     setResizable (true, true);
     setResizeLimits (kWidth * 3 / 4, kHeight * 3 / 4, kWidth * 2, kHeight * 2);
     getConstrainer()->setFixedAspectRatio ((double) kWidth / kHeight);
@@ -843,4 +934,175 @@ void Tross606Editor::timerCallback()
     }
     if (const int cv = proc.getChainVersion() * 64 + proc.getChainPos(); cv != lastChain) { patternPad.repaint(); lcd.repaint(); lastChain = cv; }
     lastVersion = v; lastStep = st; lastSlot = slot; lastPending = pend; lastLen = len; lastSel = sel;
+}
+
+void Tross606Editor::showAbout()
+{
+    about.toFront (false);
+    about.setVisible (true);
+    if (about.isShowing()) about.grabKeyboardFocus();
+}
+
+// ================================================================================================
+AboutOverlay::AboutOverlay (Tross606Processor& p) : proc (p)
+{
+    setWantsKeyboardFocus (true);
+    setInterceptsMouseClicks (true, true);
+    manualBtn.getProperties().set ("style", "key");
+    manualBtn.setTooltip ("Opens the TRoss 606 manual (PDF) that comes inside the plug-in");
+    manualBtn.onClick = [] { if (auto f = writeManual(); f.existsAsFile()) f.startAsProcess(); };
+    addAndMakeVisible (manualBtn);
+    contactLink.setFont (font (11.0f, true), false, juce::Justification::centredLeft);
+    contactLink.setColour (juce::HyperlinkButton::textColourId, col::ink);
+    contactLink.setTooltip (juce::String ("Write to ") + kContact);
+    addAndMakeVisible (contactLink);
+}
+
+juce::File AboutOverlay::writeManual()
+{
+    // one file per version, in the temporary folder; written again only when it's missing or different
+    auto f = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                 .getChildFile ("TRoss 606 Manual " JucePlugin_VersionString ".pdf");
+    const auto size = (juce::int64) BinaryData::TRoss_606_Manual_pdfSize;
+    if (! f.existsAsFile() || f.getSize() != size)
+        if (! f.replaceWithData (BinaryData::TRoss_606_Manual_pdf, (size_t) size))
+            return {};
+    return f;
+}
+
+void AboutOverlay::resized()
+{
+    const auto c = card();
+    manualBtn.setBounds (juce::Rectangle<float> (c.getRight() - 26.0f - 190.0f, c.getY() + 300.0f, 190.0f, 28.0f).toNearestInt());
+    contactLink.setBounds (juce::Rectangle<float> (c.getRight() - 26.0f - 190.0f, c.getY() + 84.0f, 190.0f, 18.0f).toNearestInt());
+}
+
+juce::Rectangle<float> AboutOverlay::card() const
+{
+    return juce::Rectangle<float> (760.0f, 400.0f).withCentre (getLocalBounds().toFloat().getCentre());
+}
+
+juce::String AboutOverlay::formatAndHost (const Tross606Processor& p)
+{
+    juce::String format = juce::AudioProcessor::getWrapperTypeDescription (p.wrapperType);
+    if (p.wrapperType == juce::AudioProcessor::wrapperType_Undefined) format = "Test build";
+    juce::String host = juce::PluginHostType().getHostDescription();
+    if (host.isEmpty() || host == "Unknown") return format;
+    return format + " in " + host;
+}
+
+void AboutOverlay::paint (juce::Graphics& g)
+{
+    g.fillAll (juce::Colours::black.withAlpha (0.55f));
+    const auto c = card();
+
+    // card: silver header, dark body (like the panel)
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillRoundedRectangle (c.translated (0, 4.0f), 8.0f);
+    const float headerH = 108.0f;
+    {
+        juce::Graphics::ScopedSaveState ss (g);
+        juce::Path clip; clip.addRoundedRectangle (c, 8.0f);
+        g.reduceClipRegion (clip);
+        g.setGradientFill (juce::ColourGradient::vertical (col::darkTop, c.getY(), col::darkBottom, c.getBottom()));
+        g.fillRect (c);
+        auto head = c.withHeight (headerH);
+        g.setGradientFill (juce::ColourGradient::vertical (col::silverTop, head.getY(), col::silverBottom, head.getBottom()));
+        g.fillRect (head);
+        for (float x = head.getX(); x < head.getRight(); x += 3.0f)
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.07f)); g.fillRect (x, head.getY(), 1.0f, headerH);
+        }
+        g.setColour (col::orange);
+        g.fillRect (head.getX(), head.getBottom(), head.getWidth(), 3.0f);
+    }
+    g.setColour (juce::Colours::black);
+    g.drawRoundedRectangle (c, 8.0f, 1.0f);
+
+    // ---- About
+    const float x0 = c.getX() + 26.0f;
+    auto logo = font (34.0f, true, -0.03f);
+    g.setFont (logo);
+    const float troW = juce::GlyphArrangement::getStringWidth (logo, "TRoss ");
+    g.setColour (col::ink);
+    g.drawText ("TRoss ", juce::Rectangle<float> (x0, c.getY() + 14.0f, troW + 4.0f, 40.0f), juce::Justification::bottomLeft);
+    g.setColour (col::orange);
+    g.drawText ("606", juce::Rectangle<float> (x0 + troW, c.getY() + 14.0f, 120.0f, 40.0f), juce::Justification::bottomLeft);
+    g.setColour (juce::Colour (0xff3a3a3a));
+    g.setFont (font (10.5f, false, 0.3f));
+    g.drawText ("ANALOG-STYLE DRUM SYNTHESIZER", juce::Rectangle<float> (x0, c.getY() + 58.0f, 400.0f, 14.0f), juce::Justification::centredLeft);
+    g.setFont (font (11.0f, true, 0.04f));
+    g.setColour (col::printText);
+    g.drawText (juce::String (juce::CharPointer_UTF8 ("Made by Ticco Ross  \xc2\xb7  \xc2\xa9 2026")), juce::Rectangle<float> (x0, c.getY() + 78.0f, 400.0f, 16.0f), juce::Justification::centredLeft);
+
+    const float rx = c.getRight() - 26.0f - 280.0f;
+    auto infoLine = [&] (const juce::String& label, const juce::String& value, float y)
+    {
+        g.setFont (font (8.5f, false, 0.15f));
+        g.setColour (col::softText);
+        g.drawText (label, juce::Rectangle<float> (rx, y, 90.0f, 14.0f), juce::Justification::centredLeft);
+        g.setFont (font (11.0f, true));
+        g.setColour (col::ink);
+        g.drawText (value, juce::Rectangle<float> (rx + 90.0f, y, 190.0f, 14.0f), juce::Justification::centredLeft, true);
+    };
+    infoLine ("VERSION", "v" JucePlugin_VersionString, c.getY() + 26.0f);
+    infoLine ("BUILT", T606_BUILD_DATE, c.getY() + 46.0f);
+    infoLine ("RUNNING AS", formatAndHost (proc), c.getY() + 66.0f);
+    infoLine ("CONTACT", {}, c.getY() + 86.0f);   // the address is the link on top
+
+    // ---- Quick reference
+    const float by = c.getY() + headerH + 18.0f;
+    auto heading = [&] (const juce::String& t, float x, float y)
+    {
+        g.setFont (font (9.0f, true, 0.25f));
+        g.setColour (col::accText);
+        g.drawText (t, juce::Rectangle<float> (x, y, 300.0f, 14.0f), juce::Justification::centredLeft);
+    };
+    heading ("QUICK REFERENCE", x0, by);
+    struct Row { const char* where; const char* what; };   // UTF-8 text
+    static const Row left[] = {
+        { "Click pad", "step on / off  \xc2\xb7  drag to paint" },
+        { "Right-click pad", "flam / drag / ruff, spacing, level" },
+        { "Click name", "play the drum (records with REC)" },
+        { "Shift-click name", "play it accented" },
+        { "Option / Alt + name", "note repeat at the REPEAT rate" },
+        { "OWN OUT", "drum on its own mono output" },
+    };
+    static const Row right[] = {
+        { "Click pattern", "play / edit it (queued while playing)" },
+        { "Shift-click pattern", "add it to the chain" },
+        { "Right-click pattern", "copy, paste, clear, chain options" },
+        { "EXPORT MIDI", "click: menu  \xc2\xb7  drag: drop on a track" },
+        { "LENGTH", "drag up / down: 1 to 16 steps" },
+        { "Click the logo", "this window" },
+    };
+    auto rows = [&] (const Row* r, int n, float x)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            const float y = by + 22.0f + (float) i * 20.0f;
+            g.setFont (font (10.0f, true, 0.02f));
+            g.setColour (col::rowText);
+            g.drawText (r[i].where, juce::Rectangle<float> (x, y, 136.0f, 16.0f), juce::Justification::centredLeft);
+            g.setFont (font (10.0f));
+            g.setColour (col::darkLabel.brighter (0.25f));
+            g.drawText (juce::String (juce::CharPointer_UTF8 (r[i].what)), juce::Rectangle<float> (x + 138.0f, y, 210.0f, 16.0f), juce::Justification::centredLeft, true);
+        }
+    };
+    rows (left, 6, x0);
+    rows (right, 6, c.getCentreX() + 10.0f);
+
+    // ---- Credits
+    const float cy = c.getBottom() - 58.0f;
+    g.setColour (juce::Colours::white.withAlpha (0.08f));
+    g.fillRect (x0, cy - 8.0f, c.getWidth() - 52.0f, 1.0f);
+    heading ("CREDITS", x0, cy);
+    g.setFont (font (9.5f));
+    g.setColour (col::darkLabel);
+    g.drawText ("Made with JUCE.  VST is a registered trademark of Steinberg Media Technologies GmbH.  "
+                "Audio Units is a trademark of Apple Inc.",
+                juce::Rectangle<float> (x0, cy + 16.0f, c.getWidth() - 52.0f, 14.0f), juce::Justification::centredLeft, true);
+    g.setFont (font (8.5f, false, 0.15f));
+    g.setColour (col::darkLabel.withAlpha (0.7f));
+    g.drawText ("CLICK ANYWHERE TO CLOSE", juce::Rectangle<float> (x0, cy + 32.0f, c.getWidth() - 52.0f, 12.0f), juce::Justification::centredRight);
 }

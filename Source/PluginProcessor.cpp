@@ -122,6 +122,31 @@ void Tross606Processor::pullParams()
 }
 
 // the sequencer reached `step`: a queued pattern takes over on step 1, then the step plays
+// `step` starts lookSamples from now: schedule the grace notes of its flams (1 = flam, 2 = drag, 3 = ruff),
+// spread evenly before the step, all of them before the main hit
+void Tross606Processor::doGrace (int step, long long absStep, int len, juce::int64 lookSamples)
+{
+    int slot = currentSlot.load();
+    if (const int chained = chainSlotFor (absStep, len); chained >= 0) slot = chained;
+    else if (step == 0 && pendingSlot.load() >= 0) slot = pendingSlot.load();
+    const bool accent = patterns.cell (slot, 0, step);
+    const int vel = accent ? 127 : 100;
+    for (int v = 0; v < kNumVoices; ++v)
+    {
+        if (! patterns.cell (slot, v + 1, step) || ! patterns.flam (slot, v + 1, step)) continue;
+        const auto fs = patterns.flamStyle (slot, v + 1, step);
+        const auto spacing = juce::jlimit ((juce::int64) 2, juce::jmax ((juce::int64) 2, lookSamples),
+                                           (juce::int64) std::round (fs.spacingMs() / 1000.0 * sampleRate));
+        const int graceVel = juce::jlimit (1, 100, juce::roundToInt (vel * fs.levelPct() / 100.0f));
+        const auto gap = juce::jmax ((juce::int64) 1, spacing / fs.graces);
+        for (int k = 0; k < fs.graces && numSched < kMaxSched; ++k)
+        {
+            const auto before = spacing - k * gap;   // first grace furthest from the step
+            sched[numSched++] = { v, graceVel, sampleClock + (lookSamples - before) };
+        }
+    }
+}
+
 // ---- pattern chain
 int Tross606Processor::chainSlotFor (long long absStep, int len) const
 {
@@ -249,7 +274,12 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         }
         wasPlaying = false;
         playStep = -1;
+        numSched = 0;   // grace notes waiting for a step that won't come
     }
+
+    // flams: grace notes are looked for this far ahead (the longest spacing, never more than half a step)
+    const double graceLook16 = juce::jmin (0.45, FlamStyle::kMaxSpacingMs / 1000.0 * sampleRate * sixteenthsPerSample);
+    const auto graceLookSamples = (juce::int64) std::floor (graceLook16 / sixteenthsPerSample);
 
     buffer.clear();
     const int numCh = buffer.getNumChannels();
@@ -310,7 +340,15 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
                 // starting exactly on a 16th plays it; starting in between waits for the next one
                 const double frac = q - std::floor (q);
                 lastSixteenth = (frac < sixteenthsPerSample) ? six - 1 : six;
+                lastGraceSixteenth = (juce::int64) std::floor (q + graceLook16 + 1e-9);   // no graces for steps already under way
                 wasPlaying = true;
+            }
+            // a flammed step coming up within graceLook16: schedule its grace notes before it
+            const auto graceSix = (juce::int64) std::floor (q + graceLook16 + 1e-9);
+            if (graceSix != lastGraceSixteenth)
+            {
+                lastGraceSixteenth = graceSix;
+                if (seqOn) doGrace (wrapStep (graceSix, len), graceSix, len, graceLookSamples);
             }
             if (six != lastSixteenth)
             {
@@ -318,6 +356,19 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
                 doStep (wrapStep (six, len), six, len, seqOn);
             }
         }
+
+        // grace notes that are due now
+        for (int k = 0; k < numSched; )
+        {
+            if (sched[k].at <= sampleClock)
+            {
+                engine.trigger (sched[k].voice, sched[k].velocity);
+                graceCount.fetch_add (1);
+                sched[k] = sched[--numSched];
+            }
+            else ++k;
+        }
+        ++sampleClock;
 
         for (; midiIt != midi.cend() && (*midiIt).samplePosition <= i; ++midiIt)
         {
@@ -368,6 +419,20 @@ void Tross606Processor::getStateInformation (juce::MemoryBlock& destData)
         juce::StringArray rows;
         for (int r = 0; r < kNumRows; ++r) rows.add (juce::String::toHexString ((int) patterns.get (s, r)));
         pats.setProperty ("slot" + juce::String (s), rows.joinIntoString (" "), nullptr);
+        juce::StringArray fl;
+        juce::String st;
+        bool any = false;
+        for (int r = 0; r < kNumRows; ++r)
+        {
+            fl.add (juce::String::toHexString ((int) patterns.getFlams (s, r)));
+            any |= patterns.getFlams (s, r) != 0;
+            for (int k = 0; k < kNumSteps; ++k) st << juce::String::toHexString ((int) patterns.getFlamStyle (s, r, k)).paddedLeft ('0', 2);
+        }
+        if (any)
+        {
+            pats.setProperty ("flams" + juce::String (s), fl.joinIntoString (" "), nullptr);
+            pats.setProperty ("styles" + juce::String (s), st, nullptr);
+        }
     }
     if (auto xml = state.createXml()) copyXmlToBinary (*xml, destData);
 }
@@ -386,6 +451,18 @@ void Tross606Processor::setStateInformation (const void* data, int sizeInBytes)
             rows.addTokens (pats.getProperty ("slot" + juce::String (s)).toString(), " ", "");
             for (int r = 0; r < kNumRows; ++r)
                 patterns.set (s, r, (uint16_t) (r < rows.size() ? rows[r].getHexValue32() & 0xffff : 0));
+            juce::StringArray fl;
+            fl.addTokens (pats.getProperty ("flams" + juce::String (s)).toString(), " ", "");
+            const auto st = pats.getProperty ("styles" + juce::String (s)).toString();
+            for (int r = 0; r < kNumRows; ++r)
+            {
+                patterns.setFlams (s, r, (uint16_t) (r < fl.size() ? fl[r].getHexValue32() & 0xffff : 0));
+                for (int k = 0; k < kNumSteps; ++k)
+                {
+                    const int at = (r * kNumSteps + k) * 2;
+                    patterns.setFlamStyle (s, r, k, (uint8_t) (at + 2 <= st.length() ? st.substring (at, at + 2).getHexValue32() & 0xff : 0));
+                }
+            }
         }
         state.removeChild (pats, nullptr);
     }
