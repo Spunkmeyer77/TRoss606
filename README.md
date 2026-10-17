@@ -18,6 +18,7 @@
 | PATTERN 1–12 | 12 pattern slots. While playing, a new slot waits until the current pattern reaches step 1. While stopped, it switches immediately. The LED shows which slot is playing; a blinking LED shows the slot that's queued |
 | Pattern buttons, right-click | **Copy to** another slot, **Clear**, and chain options. Empty slots show a small dash |
 | Pattern buttons, Shift-click | Add that pattern to the **chain** (up to 32 steps). The chain is locked to the song position; a plain click ends it |
+| HELP (top right) | Hover tips on / off (green light = on). Remembered for every TRoss 606 |
 | TRoss 606 logo | Opens the **About** window: version, build date, format and host, contact (ticcoross@gmail.com), a quick reference and **OPEN THE MANUAL** (the PDF manual is built into the plug-in) |
 | EXPORT MIDI | Click for a menu: export the playing pattern, all patterns in a row, or all patterns as separate `.mid` files. Drag the key onto a MIDI track to drop the playing pattern in as a clip. Steps are 16th notes, accented steps velocity 127, channel 10, TRoss 606's note map. Flams are written as grace notes just before the step |
 

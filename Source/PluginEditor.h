@@ -171,7 +171,9 @@ private:
     // standalone app only
     juce::TextButton playBtn { "PLAY" };
     juce::Slider bpmBox;
-    juce::TooltipWindow tooltips { this, 600 };
+    juce::TextButton helpBtn { "HELP" };   // hover tips on / off (remembered for every TRoss 606)
+    std::unique_ptr<juce::TooltipWindow> tooltips;
+    void updateHelp();
     LogoButton logoBtn;
     AboutOverlay about { proc };
 

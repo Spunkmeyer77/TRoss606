@@ -35,6 +35,7 @@ public:
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     static BusesProperties makeBuses();
+    static juce::PropertiesFile::Options settingsOptions();   // per-user settings shared by every TRoss 606 (HELP on/off)
     juce::AudioProcessorValueTreeState apvts;
 
     // ---- pattern memory / sequencer, shared with the editor

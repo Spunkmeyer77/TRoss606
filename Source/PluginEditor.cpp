@@ -153,6 +153,8 @@ void TrossLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b,
         g.fillRoundedRectangle (r.translated (0, 1.0f), 3.0f);
         g.setGradientFill (juce::ColourGradient (top.brighter (highlighted ? 0.05f : 0.0f), 0, r.getY(), bot, 0, r.getBottom(), false));
         g.fillRoundedRectangle (r.translated (0, down ? 1.0f : 0.0f), 3.0f);
+        if (b.getProperties().contains ("led"))
+            drawLed (g, { r.getX() + 8.0f, r.getCentreY() }, 5.0f, on, juce::Colour (0xff49d04a));
         return;
     }
 
@@ -175,6 +177,7 @@ void TrossLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, b
     {
         g.setColour (on && b.getButtonText() == "S" ? juce::Colours::white : juce::Colour (0xff333333));
         g.setFont (font (8.5f, true));
+        if (b.getProperties().contains ("led")) r = r.withTrimmedLeft (12);
         g.drawText (b.getButtonText(), r.withTrimmedBottom (1).translated (0, down ? 1 : 0), juce::Justification::centred);
         return;
     }
@@ -770,6 +773,26 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
         content.addAndMakeVisible (bpmBox);
     }
 
+    // HELP: the hover tips on/off (remembered for every TRoss 606)
+    helpBtn.getProperties().set ("style", "rubber");
+    helpBtn.getProperties().set ("led", true);
+    helpBtn.getProperties().set ("onColour", (juce::int64) juce::Colour (0xffdfe8d8).getARGB());
+    helpBtn.setClickingTogglesState (true);
+    helpBtn.setBounds (kWidth - kMargin - 112, 29, 58, 15);
+    {
+        juce::PropertiesFile settings (Tross606Processor::settingsOptions());
+        helpBtn.setToggleState (settings.getBoolValue ("showHelp", true), juce::dontSendNotification);
+    }
+    helpBtn.onClick = [this]
+    {
+        juce::PropertiesFile settings (Tross606Processor::settingsOptions());
+        settings.setValue ("showHelp", helpBtn.getToggleState());
+        settings.saveIfNeeded();
+        updateHelp();
+    };
+    content.addAndMakeVisible (helpBtn);
+    updateHelp();
+
     logoBtn.setBounds (kMargin, 12, 300, 38);
     logoBtn.onClick = [this] { showAbout(); };
     content.addAndMakeVisible (logoBtn);
@@ -1074,7 +1097,7 @@ void AboutOverlay::paint (juce::Graphics& g)
         { "Right-click pattern", "copy, paste, clear, chain options" },
         { "EXPORT MIDI", "click: menu  \xc2\xb7  drag: drop on a track" },
         { "LENGTH", "drag up / down: 1 to 16 steps" },
-        { "Click the logo", "this window" },
+        { "HELP", "hover tips on / off" },
     };
     auto rows = [&] (const Row* r, int n, float x)
     {
@@ -1105,4 +1128,18 @@ void AboutOverlay::paint (juce::Graphics& g)
     g.setFont (font (8.5f, false, 0.15f));
     g.setColour (col::darkLabel.withAlpha (0.7f));
     g.drawText ("CLICK ANYWHERE TO CLOSE", juce::Rectangle<float> (x0, cy + 32.0f, c.getWidth() - 52.0f, 12.0f), juce::Justification::centredRight);
+}
+
+void Tross606Editor::updateHelp()
+{
+    if (helpBtn.getToggleState())
+    {
+        if (tooltips == nullptr) tooltips = std::make_unique<juce::TooltipWindow> (this, 600);
+        helpBtn.setTooltip ("Hover tips on. Click to switch them off");
+    }
+    else
+    {
+        tooltips.reset();   // no tooltip window, no tips (knob value read-outs still show)
+        helpBtn.setTooltip ({});
+    }
 }

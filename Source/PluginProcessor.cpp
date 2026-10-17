@@ -483,3 +483,14 @@ void Tross606Processor::setStateInformation (const void* data, int sizeInBytes)
 juce::AudioProcessorEditor* Tross606Processor::createEditor() { return new Tross606Editor (*this); }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new Tross606Processor(); }
+
+juce::PropertiesFile::Options Tross606Processor::settingsOptions()
+{
+    juce::PropertiesFile::Options o;
+    o.applicationName = "TRoss 606";
+    o.filenameSuffix = ".settings";
+    o.folderName = "Ticco Ross";
+    o.osxLibrarySubFolder = "Application Support";
+    o.commonToAllUsers = false;
+    return o;
+}
