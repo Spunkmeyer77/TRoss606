@@ -3,6 +3,7 @@
 #pragma once
 #include "GenVoices.h"
 #include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <memory>
 
@@ -71,6 +72,13 @@ struct FlamStyle
     float levelPct() const  { return kLevelPct[level]; }
 };
 
+// ---- parameter locks: per drum, per step, per lockable knob. One byte each: 0 = no lock,
+// 1..255 = the knob's normalised position (0..1) in 254 steps.
+enum LockParam { LockTune = 0, LockDecay, LockLevel, LockExtra, kNumLockParams };
+inline bool hasExtraKnob (int voice) { return voice == BD || voice == SD || voice == CP || voice == CY; }
+inline uint8_t encodeLock (float norm) { return (uint8_t) (1 + std::lround (std::clamp (norm, 0.0f, 1.0f) * 254.0f)); }
+inline float decodeLock (uint8_t b)    { return (float) (b - 1) / 254.0f; }
+
 // 12 slots x 9 rows x 16 steps, one 16-bit mask per row. Edited from the UI thread,
 // read and recorded into from the audio thread, so every row is atomic.
 class PatternMemory
@@ -108,6 +116,35 @@ public:
         m = on ? (uint16_t) (m | (1u << step)) : (uint16_t) (m & ~(1u << step));
         setFlams (slot, row, m);
     }
+    // ---- parameter locks (voice 0..7). A lock stays when its note is switched off, and plays again when it's back
+    uint8_t lock (int slot, int voice, int step, int param) const { return locks[slot][voice][step][param].load (std::memory_order_relaxed); }
+    void setLock (int slot, int voice, int step, int param, uint8_t b)
+    {
+        locks[slot][voice][step][param].store (b, std::memory_order_relaxed);
+        ++version;
+    }
+    bool stepHasLock (int slot, int voice, int step) const
+    {
+        for (int k = 0; k < kNumLockParams; ++k) if (lock (slot, voice, step, k) != 0) return true;
+        return false;
+    }
+    void clearLocks (int slot, int voice, int param)   // voice / param -1 = all
+    {
+        for (int v = 0; v < kNumVoices; ++v)
+            for (int s = 0; s < kNumSteps; ++s)
+                for (int k = 0; k < kNumLockParams; ++k)
+                    if ((voice < 0 || v == voice) && (param < 0 || k == param)) locks[slot][v][s][k].store (0, std::memory_order_relaxed);
+        ++version;
+    }
+    bool hasLocks (int slot) const
+    {
+        for (int v = 0; v < kNumVoices; ++v)
+            for (int s = 0; s < kNumSteps; ++s)
+                for (int k = 0; k < kNumLockParams; ++k)
+                    if (lock (slot, v, s, k) != 0) return true;
+        return false;
+    }
+
     bool cell (int slot, int row, int step) const  { return (get (slot, row) >> step) & 1; }
     void setCell (int slot, int row, int step, bool on)
     {
@@ -115,7 +152,7 @@ public:
         m = on ? (uint16_t) (m | (1u << step)) : (uint16_t) (m & ~(1u << step));
         set (slot, row, m);
     }
-    void clear (int slot) { for (int r = 0; r < kNumRows; ++r) set (slot, r, 0); }
+    void clear (int slot) { for (int r = 0; r < kNumRows; ++r) set (slot, r, 0); clearLocks (slot, -1, -1); }
     void copySlot (int from, int to)
     {
         for (int r = 0; r < kNumRows; ++r)
@@ -124,6 +161,11 @@ public:
             setFlams (to, r, getFlams (from, r));
             for (int s = 0; s < kNumSteps; ++s) setFlamStyle (to, r, s, getFlamStyle (from, r, s));
         }
+        for (int v = 0; v < kNumVoices; ++v)
+            for (int s = 0; s < kNumSteps; ++s)
+                for (int k = 0; k < kNumLockParams; ++k)
+                    locks[to][v][s][k].store (lock (from, v, s, k), std::memory_order_relaxed);
+        ++version;
     }
     bool isEmpty (int slot) const
     {
@@ -137,6 +179,7 @@ private:
     std::atomic<uint16_t> masks[kNumSlots][kNumRows] {};
     std::atomic<uint16_t> flams[kNumSlots][kNumRows] {};
     std::atomic<uint8_t> styles[kNumSlots][kNumRows][kNumSteps] {};
+    std::atomic<uint8_t> locks[kNumSlots][kNumVoices][kNumSteps][kNumLockParams] {};
     std::atomic<int> version { 0 };
 };
 
@@ -152,8 +195,19 @@ public:
         for (auto& c : trigCount) c = 0;
     }
 
+    // a hit with parameter locks: vals[k] = the real value (dB, st, %) or NaN = the knob. The values stay
+    // until the drum's next hit (Level keeps acting on the ringing sound).
+    void setVoiceLocks (int voice, const float* vals)
+    {
+        bool any = false;
+        for (int k = 0; k < kNumLockParams; ++k) { active[voice][k] = vals != nullptr ? vals[k] : NAN; any |= ! std::isnan (active[voice][k]); }
+        if (any || hadLocks[voice]) writeVoice (voice);
+        hadLocks[voice] = any;
+    }
+
     void setParams (const SoundParams& p)
     {
+        base = p;
         auto& v = *g;
         v.master = p.master;  v.accent = p.accent;
         v.bd_lvl = p.lvl[BD]; v.bd_tune = p.tune[BD]; v.bd_decay = p.decay[BD]; v.bd_attack = p.bdAttack;
@@ -168,6 +222,7 @@ public:
         double* solo[] = { &v.solo_bd, &v.solo_sd, &v.solo_lt, &v.solo_ht, &v.solo_cp, &v.solo_ch, &v.solo_oh, &v.solo_cy };
         for (int i = 0; i < kNumVoices; ++i) { *mute[i] = p.mute[i] ? 1 : 0; *solo[i] = p.solo[i] ? 1 : 0; ownOut[i] = p.ownOut[i]; }
         masterGain = p.master > -69.9f ? std::pow (10.0, p.master / 20.0) : 0.0;
+        for (int i = 0; i < kNumVoices; ++i) if (hadLocks[i]) writeVoice (i);
     }
 
     // a hit from the keyboard (velocity 1..127; above 100 adds accent)
@@ -212,6 +267,27 @@ public:
     }
 
 private:
+    SoundParams base;
+    float active[kNumVoices][kNumLockParams] { { NAN, NAN, NAN, NAN }, { NAN, NAN, NAN, NAN }, { NAN, NAN, NAN, NAN }, { NAN, NAN, NAN, NAN },
+                                               { NAN, NAN, NAN, NAN }, { NAN, NAN, NAN, NAN }, { NAN, NAN, NAN, NAN }, { NAN, NAN, NAN, NAN } };
+    bool hadLocks[kNumVoices] {};
+
+    // one drum's tune / decay / level / extra: the knob, or its lock
+    void writeVoice (int i)
+    {
+        auto& v = *g;
+        double* tune[]  = { &v.bd_tune, &v.sd_tune, &v.lt_tune, &v.ht_tune, &v.cp_tune, &v.ch_tune, &v.oh_tune, &v.cy_tune };
+        double* decay[] = { &v.bd_decay, &v.sd_decay, &v.lt_decay, &v.ht_decay, &v.cp_decay, &v.ch_decay, &v.oh_decay, &v.cy_decay };
+        double* lvl[]   = { &v.bd_lvl, &v.sd_lvl, &v.lt_lvl, &v.ht_lvl, &v.cp_lvl, &v.ch_lvl, &v.oh_lvl, &v.cy_lvl };
+        double* extra[] = { &v.bd_attack, &v.sd_snappy, nullptr, nullptr, &v.cp_noise, nullptr, nullptr, &v.cy_tone };
+        const float baseExtra[] = { base.bdAttack, base.sdSnappy, 0, 0, base.cpNoise, 0, 0, base.cyTone };
+        auto pick = [&] (int k, float knob) { return std::isnan (active[i][k]) ? knob : active[i][k]; };
+        *tune[i]  = pick (LockTune, base.tune[i]);
+        *decay[i] = pick (LockDecay, base.decay[i]);
+        *lvl[i]   = pick (LockLevel, base.lvl[i]);
+        if (extra[i] != nullptr) *extra[i] = pick (LockExtra, baseExtra[i]);
+    }
+
     std::unique_ptr<GenVoices> g;
     int trigCount[kNumVoices] {};
     bool ownOut[kNumVoices] {};

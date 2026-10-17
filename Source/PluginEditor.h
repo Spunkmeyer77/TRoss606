@@ -33,6 +33,31 @@ private:
     int dragRow = -1, lastDragStep = -1;
     bool dragValue = false;
     bool hit (juce::Point<float>, int& row, int& step) const;
+
+};
+
+// Parameter-lock screen, drawn over the step pads: choose a drum (left) and a knob (keys below), then
+// drag across the steps' bars to lock that knob's value per step. Right-drag / double-click removes locks.
+class LockGrid : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit LockGrid (Tross606Processor& p) : proc (p) { setOpaque (true); }
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override { dragging = false; lastCol = -1; }
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    static juce::Rectangle<float> tabRect (int i);
+    static juce::Rectangle<float> voiceRect (int v);
+private:
+    Tross606Processor& proc;
+    bool dragging = false, erasing = false;
+    int lastCol = -1;
+    int voice() const;
+    int knob() const;
+    int columnAt (float x) const;
+    float normAt (float y) const;
+    void apply (int col, float y);
 };
 
 // 12 pattern buttons, 2 across x 6 down. LED = slot playing (blinks when queued), light cap = selected.
@@ -157,6 +182,7 @@ private:
     TrossLookAndFeel lnf;
     Content content { *this };
     StepGrid grid { proc };
+    LockGrid lockGrid { proc };
     PatternPad patternPad { proc };
     StatusLcd lcd { proc };
     std::vector<std::unique_ptr<NameStrip>> strips;
@@ -168,6 +194,7 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sAtts;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> bAtts;
     juce::TextButton clearBtn { "CLEAR" };
+    juce::TextButton lockBtn { "P-LOCK" };   // note screen <-> parameter-lock screen
     // standalone app only
     juce::TextButton playBtn { "PLAY" };
     juce::Slider bpmBox;

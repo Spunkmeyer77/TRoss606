@@ -86,7 +86,15 @@ public:
         for (int s = 0; s < tross606::kNumSteps; ++s)
             if ((steps >> s) & 1) patterns.setFlamStyle (slot, row, s, style);
     }
-    std::atomic<int> graceCount { 0 };   // grace notes played (for the tests)
+    std::atomic<int> graceCount { 0 };
+
+    // ---- parameter locks (the P-LOCK screen)
+    // the knob behind a lock: LockTune/Decay/Level/Extra of a drum (nullptr = that drum has no extra knob)
+    juce::RangedAudioParameter* lockParameter (int voice, int param) const { return lockParams[voice][param]; }
+    std::atomic<int> lockVoiceSel { 0 }, lockKnobSel { 0 };   // the drum and knob the P-LOCK screen shows (UI only)
+    std::atomic<bool> showLocks { false };                     // the P-LOCK screen is showing (UI only)
+    void clearRowLocks (int voice, int param);                 // param -1 = every knob of that drum
+    void lockWholeRow (int voice, int param, uint8_t value);   // every hit in the row gets this lock   // grace notes played (for the tests)
 
     // Standalone app only: there is no host transport, so it gets its own play button and tempo
     bool isStandalone() const { return wrapperType == wrapperType_Standalone; }
@@ -145,7 +153,9 @@ private:
 
     // grace notes waiting to play (audio thread only)
     static constexpr int kMaxSched = 64;
-    struct Sched { int voice = 0, velocity = 0; juce::int64 at = 0; };
+    struct Sched { int voice = 0, velocity = 0, slot = 0, step = 0; juce::int64 at = 0; };
+    juce::RangedAudioParameter* lockParams[tross606::kNumVoices][tross606::kNumLockParams] {};
+    void applyLocks (int slot, int voice, int step);   // set the drum's locked values for this hit
     Sched sched[kMaxSched];
     int numSched = 0;
     juce::int64 sampleClock = 0, lastGraceSixteenth = 0;

@@ -80,6 +80,17 @@ Tross606Processor::Tross606Processor()
         raw.lvl[v] = p (id + "_lvl");   raw.tune[v] = p (id + "_tune"); raw.decay[v] = p (id + "_decay");
         raw.mute[v] = p (id + "_mute"); raw.solo[v] = p (id + "_solo"); raw.ownOut[v] = p (id + "_out");
     }
+    {
+        const char* extras[kNumVoices] = { "bd_attack", "sd_snappy", nullptr, nullptr, "cp_noise", nullptr, nullptr, "cy_tone" };
+        for (int v = 0; v < kNumVoices; ++v)
+        {
+            const juce::String id = kIds[v];
+            lockParams[v][LockTune]  = apvts.getParameter (id + "_tune");
+            lockParams[v][LockDecay] = apvts.getParameter (id + "_decay");
+            lockParams[v][LockLevel] = apvts.getParameter (id + "_lvl");
+            lockParams[v][LockExtra] = extras[v] != nullptr ? apvts.getParameter (extras[v]) : nullptr;
+        }
+    }
     raw.bdAttack = p ("bd_attack"); raw.sdSnappy = p ("sd_snappy"); raw.cpNoise = p ("cp_noise"); raw.cyTone = p ("cy_tone");
     raw.accent = p ("accent"); raw.master = p ("master");
     raw.repeatRate = p ("repeat_rate");
@@ -142,7 +153,7 @@ void Tross606Processor::doGrace (int step, long long absStep, int len, juce::int
         for (int k = 0; k < fs.graces && numSched < kMaxSched; ++k)
         {
             const auto before = spacing - k * gap;   // first grace furthest from the step
-            sched[numSched++] = { v, graceVel, sampleClock + (lookSamples - before) };
+            sched[numSched++] = { v, graceVel, slot, step, sampleClock + (lookSamples - before) };
         }
     }
 }
@@ -203,8 +214,37 @@ void Tross606Processor::doStep (int step, long long absStep, int len, bool seqOn
     const int slot = currentSlot.load();
     uint16_t rows[kNumRows];
     for (int r = 0; r < kNumRows; ++r) rows[r] = patterns.get (slot, r);
+    if (seqOn)
+        for (int v = 0; v < kNumVoices; ++v)
+            if ((rows[v + 1] >> step) & 1) applyLocks (slot, v, step);
     engine.sequencerStep (step, rows, seqOn);
     playStep = step;
+}
+
+void Tross606Processor::applyLocks (int slot, int voice, int step)
+{
+    float vals[kNumLockParams];
+    for (int k = 0; k < kNumLockParams; ++k)
+    {
+        const auto b = patterns.lock (slot, voice, step, k);
+        vals[k] = (b != 0 && lockParams[voice][k] != nullptr) ? lockParams[voice][k]->convertFrom0to1 (decodeLock (b)) : NAN;
+    }
+    engine.setVoiceLocks (voice, vals);
+}
+
+void Tross606Processor::clearRowLocks (int voice, int param)
+{
+    const int slot = currentSlot.load();
+    for (int s = 0; s < kNumSteps; ++s)
+        for (int k = 0; k < kNumLockParams; ++k)
+            if (param < 0 || k == param) patterns.setLock (slot, voice, s, k, 0);
+}
+
+void Tross606Processor::lockWholeRow (int voice, int param, uint8_t value)
+{
+    const int slot = currentSlot.load();
+    for (int s = 0; s < kNumSteps; ++s)
+        if (patterns.cell (slot, voice + 1, s)) patterns.setLock (slot, voice, s, param, value);
 }
 
 // REC while playing: the hit goes into the nearest step; velocity above 100 also sets the accent
@@ -304,6 +344,7 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     for (int r = hitRead.load (std::memory_order_relaxed); r != hitWrite.load (std::memory_order_acquire); r = (r + 1) % kHitQueue)
     {
         const auto hit = hitQueue[r];
+        engine.setVoiceLocks (hit.voice, nullptr);   // played by hand: the knobs, no locks
         engine.trigger (hit.voice, hit.velocity);
         if (playing && recOn) recordHit (hit.voice, hit.velocity, q0, len);
         hitRead.store ((r + 1) % kHitQueue, std::memory_order_release);
@@ -317,6 +358,7 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     const double samplesPerRate = rate16 / sixteenthsPerSample;
     auto repeatFire = [&] (double q)
     {
+        engine.setVoiceLocks (rv, nullptr);
         engine.trigger (rv, repVel);
         if (playing && recOn) recordHit (rv, repVel, q, len);
         repeatHits[rv].fetch_add (1);
@@ -362,6 +404,7 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         {
             if (sched[k].at <= sampleClock)
             {
+                applyLocks (sched[k].slot, sched[k].voice, sched[k].step);   // grace notes play with the step's locks
                 engine.trigger (sched[k].voice, sched[k].velocity);
                 graceCount.fetch_add (1);
                 sched[k] = sched[--numSched];
@@ -376,6 +419,7 @@ void Tross606Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
             if (! m.isNoteOn()) continue;
             const int voice = noteToVoice (m.getNoteNumber());
             if (voice < 0) continue;
+            engine.setVoiceLocks (voice, nullptr);
             engine.trigger (voice, m.getVelocity());
             if (playing && recOn) recordHit (voice, m.getVelocity(), q, len);
         }
@@ -433,7 +477,17 @@ void Tross606Processor::getStateInformation (juce::MemoryBlock& destData)
             pats.setProperty ("flams" + juce::String (s), fl.joinIntoString (" "), nullptr);
             pats.setProperty ("styles" + juce::String (s), st, nullptr);
         }
+        if (patterns.hasLocks (s))   // 2 hex digits per drum x step x knob
+        {
+            juce::String lk;
+            for (int v = 0; v < kNumVoices; ++v)
+                for (int k = 0; k < kNumSteps; ++k)
+                    for (int q = 0; q < kNumLockParams; ++q)
+                        lk << juce::String::toHexString ((int) patterns.lock (s, v, k, q)).paddedLeft ('0', 2);
+            pats.setProperty ("locks" + juce::String (s), lk, nullptr);
+        }
     }
+
     if (auto xml = state.createXml()) copyXmlToBinary (*xml, destData);
 }
 
@@ -463,6 +517,15 @@ void Tross606Processor::setStateInformation (const void* data, int sizeInBytes)
                     patterns.setFlamStyle (s, r, k, (uint8_t) (at + 2 <= st.length() ? st.substring (at, at + 2).getHexValue32() & 0xff : 0));
                 }
             }
+            const auto lk = pats.getProperty ("locks" + juce::String (s)).toString();
+            for (int v = 0; v < kNumVoices; ++v)
+                for (int k = 0; k < kNumSteps; ++k)
+                    for (int q = 0; q < kNumLockParams; ++q)
+                    {
+                        const int at = ((v * kNumSteps + k) * kNumLockParams + q) * 2;
+                        patterns.setLock (s, v, k, q, (uint8_t) (at + 2 <= lk.length() ? lk.substring (at, at + 2).getHexValue32() & 0xff : 0));
+                    }
+
         }
         state.removeChild (pats, nullptr);
     }

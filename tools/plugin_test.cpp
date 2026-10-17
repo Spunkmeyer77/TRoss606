@@ -377,6 +377,56 @@ int main (int argc, char** argv)
         check (ons == 4, ("MIDI export: kick + snare + 2 grace notes (" + juce::String (ons) + " notes)").toRawUTF8());
     }
 
+    // 6h. parameter locks: step 5 of the kick locked to Level -inf, step 9 locked to Decay 100 %
+    {
+        const int slot = proc.getCurrentSlot();
+        pats.clear (slot);
+        for (int s : { 0, 4, 8, 12 }) pats.setCell (slot, 1, s, true);
+        pats.setLock (slot, 0, 4, tross606::LockLevel, tross606::encodeLock (0.0f));
+        pats.setLock (slot, 0, 8, tross606::LockDecay, tross606::encodeLock (1.0f));
+        check (pats.hasLocks (slot) && pats.lock (slot, 0, 4, tross606::LockLevel) == 1, "level lock set on BD step 5");
+
+        // one bar, peak per quarter note (at 120 BPM a step is 0.125 s; each hit gets 4 steps)
+        host.playing = true; host.ppq = 0.0;
+        const int perStep = (int) (sr * 0.125);
+        std::vector<float> quarterPeak (4, 0.0f), quarterTail (4, 0.0f);
+        int at = 0;
+        for (int b = 0; b < (int) (sr * 2.0) / block; ++b)
+        {
+            juce::MidiBuffer m;
+            proc.processBlock (buf, m);
+            host.ppq += block / sr * host.bpm / 60.0;
+            for (int i = 0; i < block; ++i, ++at)
+            {
+                const int qn = juce::jlimit (0, 3, at / (perStep * 4));
+                const float a = std::abs (buf.getSample (0, i));
+                quarterPeak[(size_t) qn] = juce::jmax (quarterPeak[(size_t) qn], a);
+                if ((at % (perStep * 4)) > perStep * 3) quarterTail[(size_t) qn] = juce::jmax (quarterTail[(size_t) qn], a);
+            }
+        }
+        host.playing = false; run (2);
+        std::printf ("lock peaks %.3f %.3f %.3f %.3f  tails %.4f %.4f %.4f %.4f\n", quarterPeak[0], quarterPeak[1], quarterPeak[2], quarterPeak[3],
+                     quarterTail[0], quarterTail[1], quarterTail[2], quarterTail[3]);
+        check (quarterPeak[0] > 0.05f && quarterPeak[1] < 0.02f * quarterPeak[0], "Level lock: BD step 5 silent, step 1 plays");
+        check (quarterTail[2] > 3.0f * quarterTail[0], "Decay lock: BD step 9 rings much longer");
+        check (quarterPeak[3] > 0.7f * quarterPeak[0] && quarterTail[3] < 1.5f * quarterTail[0] + 1e-4f,
+               "after a locked hit the next hit is back on the knobs");
+
+        pats.copySlot (slot, 10);
+        check (pats.lock (10, 0, 8, tross606::LockDecay) != 0, "Copy to: locks copied");
+        pats.setCell (10, 1, 8, false);
+        check (pats.lock (10, 0, 8, tross606::LockDecay) != 0, "a lock stays when its note is switched off");
+        pats.clear (10);
+        proc.lockVoiceSel = 0; proc.lockKnobSel = tross606::LockDecay;
+        // put back the drag from 6g for the state test
+        tross606::FlamStyle drag; drag.graces = 2;
+        pats.setCell (slot, 2, 4, true);
+        pats.setFlam (slot, 2, 4, true);
+        pats.setFlamStyle (slot, 2, 4, drag.encode());
+        pats.setLock (slot, 0, 12, tross606::LockDecay, tross606::encodeLock (0.6f));   // for the snapshot
+        pats.setLock (slot, 0, 0, tross606::LockDecay, tross606::encodeLock (0.3f));
+    }
+
     // 7. state round trip
     juce::MemoryBlock state; proc.getStateInformation (state);
     {
@@ -388,6 +438,7 @@ int main (int argc, char** argv)
                 same &= other.patterns.get (s, r) == pats.get (s, r);
         check (same, "all 12 patterns restored from the saved state");
         const int sl = proc.getCurrentSlot();
+        check (other.patterns.lock (sl, 0, 4, tross606::LockLevel) == 1 && other.patterns.lock (sl, 0, 8, tross606::LockDecay) == 255, "locks restored");
         check (other.patterns.flam (sl, 2, 4) && other.patterns.flamStyle (sl, 2, 4).graces == 2, "flams restored from the saved state");
     }
     proc.apvts.getParameter ("bd_tune")->setValueNotifyingHost (0.25f);
@@ -428,6 +479,16 @@ int main (int argc, char** argv)
         auto pngFile = outDir.getChildFile ("about.png");
         pngFile.deleteFile();
         if (auto os = pngFile.createOutputStream()) png.writeImageToStream (img, *os);
+    }
+    {   // the P-LOCK screen
+        proc.showLocks = true;
+        std::unique_ptr<juce::AudioProcessorEditor> led (proc.createEditor());
+        led->setSize (led->getWidth() * 2, led->getHeight() * 2);
+        auto img = led->createComponentSnapshot (led->getLocalBounds(), true, 1.0f);
+        auto pngFile = outDir.getChildFile ("locks.png");
+        pngFile.deleteFile();
+        if (auto os = pngFile.createOutputStream()) png.writeImageToStream (img, *os);
+        proc.showLocks = false;
     }
     {
         auto man = AboutOverlay::writeManual();
