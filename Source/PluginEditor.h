@@ -175,6 +175,8 @@ private:
     {
         explicit Content (Tross606Editor& e) : ed (e) { setOpaque (true); }
         void paint (juce::Graphics& g) override { ed.paintPanel (g); }
+        // double-click the header strip: bigger window / back to normal size
+        void mouseDoubleClick (const juce::MouseEvent& e) override { if (e.y < 52) ed.toggleSize(); }
         Tross606Editor& ed;
     };
 
@@ -211,6 +213,7 @@ private:
     void paintPanel (juce::Graphics&);
 public:
     void showAbout();
+    void toggleSize();   // 100 % <-> 150 %
     bool isAboutShowing() const { return about.isVisible(); }
 private:
     void timerCallback() override;

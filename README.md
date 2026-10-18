@@ -30,7 +30,7 @@ Velocity: velocities up to 100 scale the level, and anything above 100
 also adds the Accent.
 
 All 12 patterns are saved with your Live set, along with every knob. The window can be resized
-from its corner.
+from its corner, or double-click the top strip for 150 % (and again for 100 %).
 
 The full manual is `docs/TRoss 606 Manual.pdf`; it's also included in every build download, and built into the plug-in (click the logo, then OPEN THE MANUAL).
 
@@ -51,7 +51,7 @@ The standalone app has only the main output, so it doesn't show the OWN OUT swit
 
 The **standalone app** has no host transport, so it shows its own **PLAY** button and BPM read-out (in the master section).
 
-Defaults: Bass Drum Tune 1 st, Decay 15.8 %, Attack 0 %; Snare Tune 0 st, Decay 75.5 %, Snappy 57.2 %; Clap Tune 2.6 st, Decay 100 %, Noise 37.9 %.
+Defaults: Bass Drum Tune 1 st, Decay 15.8 %, Attack 0 %; Snare Tune 0 st, Decay 75.5 %, Snappy 57.2 %; Clap Tune 2.6 st, Decay 100 %, Noise 37.9 %; Open hat Decay 16.6 %.
 The build's version number is shown at the top right of the panel.
 
 ## Build on your Mac (macOS 12+)

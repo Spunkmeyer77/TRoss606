@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(TRoss606 VERSION 0.9.0)
+project(TRoss606 VERSION 0.9.1)
 string(TIMESTAMP T606_BUILD_DATE "%d %b %Y" UTC)
 
 set(CMAKE_CXX_STANDARD 17)

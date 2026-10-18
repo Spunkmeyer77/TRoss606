@@ -40,7 +40,7 @@ int main (int argc, char** argv)
     proc.prepareToPlay (sr, block);
     std::printf ("params: %d\n", (int) proc.getParameters().size());
     auto pv = [&] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
-    check (std::abs (pv ("bd_tune") - 1.0f) < 0.01f && std::abs (pv ("bd_decay") - 15.8f) < 0.01f && pv ("bd_attack") < 0.01f
+    check (std::abs (pv ("oh_decay") - 16.6f) < 0.01f && std::abs (pv ("bd_tune") - 1.0f) < 0.01f && std::abs (pv ("bd_decay") - 15.8f) < 0.01f && pv ("bd_attack") < 0.01f
            && std::abs (pv ("sd_tune")) < 0.01f && std::abs (pv ("sd_decay") - 75.5f) < 0.01f && std::abs (pv ("sd_snappy") - 57.2f) < 0.01f
            && std::abs (pv ("cp_tune") - 2.6f) < 0.01f && std::abs (pv ("cp_decay") - 100.0f) < 0.01f && std::abs (pv ("cp_noise") - 37.9f) < 0.01f,
            "defaults: BD Tune 1 st, Decay 15.8 %, Attack 0 %; SD Tune 0 st, Decay 75.5 %, Snappy 57.2 %; CP Tune 2.6 st, Decay 100 %, Noise 37.9 %");
@@ -475,6 +475,11 @@ int main (int argc, char** argv)
     {
         te->showAbout();
         check (te->isAboutShowing(), "logo click opens the About window");
+        const int w0 = ed->getWidth();
+        te->toggleSize();
+        const int w1 = ed->getWidth();
+        te->toggleSize();
+        check (w1 == w0 * 3 / 2 && ed->getWidth() == w0, "double-click on the header: 150 % and back to 100 %");
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         auto pngFile = outDir.getChildFile ("about.png");
         pngFile.deleteFile();
