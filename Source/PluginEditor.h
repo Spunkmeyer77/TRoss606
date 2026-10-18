@@ -213,7 +213,7 @@ private:
     void paintPanel (juce::Graphics&);
 public:
     void showAbout();
-    void toggleSize();   // 100 % <-> 150 %
+    void toggleSize();   // 100 % <-> 125 %
     bool isAboutShowing() const { return about.isVisible(); }
 private:
     void timerCallback() override;

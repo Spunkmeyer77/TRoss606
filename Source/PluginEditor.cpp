@@ -1382,7 +1382,7 @@ void Tross606Editor::updateHelp()
 
 void Tross606Editor::toggleSize()
 {
-    const bool big = getWidth() > kWidth * 5 / 4;
-    const double scale = big ? 1.0 : 1.5;
+    const bool big = getWidth() > kWidth * 9 / 8;
+    const double scale = big ? 1.0 : 1.25;
     setSize (juce::roundToInt (kWidth * scale), juce::roundToInt (kHeight * scale));
 }

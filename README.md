@@ -30,7 +30,7 @@ Velocity: velocities up to 100 scale the level, and anything above 100
 also adds the Accent.
 
 All 12 patterns are saved with your Live set, along with every knob. The window can be resized
-from its corner, or double-click the top strip for 150 % (and again for 100 %).
+from its corner, or double-click the top strip for 125 % (and again for 100 %).
 
 The full manual is `docs/TRoss 606 Manual.pdf`; it's also included in every build download, and built into the plug-in (click the logo, then OPEN THE MANUAL).
 

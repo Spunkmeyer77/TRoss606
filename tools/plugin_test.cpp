@@ -479,7 +479,7 @@ int main (int argc, char** argv)
         te->toggleSize();
         const int w1 = ed->getWidth();
         te->toggleSize();
-        check (w1 == w0 * 3 / 2 && ed->getWidth() == w0, "double-click on the header: 150 % and back to 100 %");
+        check (w1 == juce::roundToInt (w0 * 1.25) && ed->getWidth() == w0, "double-click on the header: 125 % and back to 100 %");
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         auto pngFile = outDir.getChildFile ("about.png");
         pngFile.deleteFile();
