@@ -1014,7 +1014,7 @@ Tross606Editor::Tross606Editor (Tross606Processor& p)
     helpBtn.setBounds (kWidth - kMargin - 112, 29, 58, 15);
     {
         juce::PropertiesFile settings (Tross606Processor::settingsOptions());
-        helpBtn.setToggleState (settings.getBoolValue ("showHelp", true), juce::dontSendNotification);
+        helpBtn.setToggleState (settings.getBoolValue ("showHelp", false), juce::dontSendNotification);
     }
     helpBtn.onClick = [this]
     {
