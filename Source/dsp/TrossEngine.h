@@ -33,7 +33,7 @@ inline int noteToVoice (int n)
 // Sound parameters (units as shown on the panel)
 struct SoundParams
 {
-    float master = 0, accent = 50;
+    float master = -8.5f, accent = 50;
     float lvl[kNumVoices]  { 0, 0, 0, 0, 0, 0, 0, 0 };   // dB, -70..6
     float tune[kNumVoices] { 1.0f, 0, 0, 0, 2.6f, 0, 0, 0 }; // semitones
     float decay[kNumVoices] { 15.8f, 75.5f, 80, 80, 100.0f, 70, 16.6f, 70 }; // %
@@ -301,6 +301,6 @@ private:
     std::unique_ptr<GenVoices> g;
     int trigCount[kNumVoices] {};
     bool ownOut[kNumVoices] {};
-    double masterGain = 1.0;
+    double masterGain = 0.375837;   // -8.5 dB
 };
 } // namespace tross606
