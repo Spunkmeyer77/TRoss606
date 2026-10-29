@@ -33,7 +33,7 @@ inline int noteToVoice (int n)
 // Sound parameters (units as shown on the panel)
 struct SoundParams
 {
-    float master = -6, accent = 50;
+    float master = 0, accent = 50;
     float lvl[kNumVoices]  { 0, 0, 0, 0, 0, 0, 0, 0 };   // dB, -70..6
     float tune[kNumVoices] { 1.0f, 0, 0, 0, 2.6f, 0, 0, 0 }; // semitones
     float decay[kNumVoices] { 15.8f, 75.5f, 80, 80, 100.0f, 70, 16.6f, 70 }; // %
@@ -248,8 +248,18 @@ public:
     // a drum's own output isn't there (standalone, or switched off by the host): keep it in the main mix
     void setOwnOut (int voice, bool on) { ownOut[voice] = on; }
 
+    // output stage: clean up to -3 dBFS, then rounds the loudest peaks off smoothly instead of
+    // hard clipping (like a real 606's analog output); never goes past -0.2 dBFS
+    static inline double softClip (double x)
+    {
+        constexpr double knee = 0.7, room = 0.28;   // never above 0.98 (-0.2 dBFS)
+        const double a = std::abs (x);
+        if (a <= knee) return x;
+        return std::copysign (knee + room * std::tanh ((a - knee) / room), x);
+    }
+
     // one sample of the full mix (every drum, times Volume)
-    inline float tick() { return (float) g->tick(); }
+    inline float tick() { return (float) softClip (g->tick()); }
 
     // one sample with routing: returns the main mix (drums on MAIN, times Volume);
     // outs[i] = drum i when it is on its own output (not affected by Volume), else 0
@@ -263,7 +273,7 @@ public:
             if (ownOut[i]) outs[i] = (float) v;
             else         { outs[i] = 0.0f; mainMix += v; }
         }
-        return (float) (mainMix * masterGain);
+        return (float) softClip (mainMix * masterGain);
     }
 
 private:
@@ -291,6 +301,6 @@ private:
     std::unique_ptr<GenVoices> g;
     int trigCount[kNumVoices] {};
     bool ownOut[kNumVoices] {};
-    double masterGain = 0.5;
+    double masterGain = 1.0;
 };
 } // namespace tross606

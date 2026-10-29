@@ -105,7 +105,7 @@ static inline double rcr(double a_t, double a_s, double a_e) {
 
 struct GenVoices {
     // ---- Params (set from the plug-in)
-    double master = -6.0;
+    double master = 0.0;
     double accent = 50.0;
     double bd_lvl = 0.0;
     double bd_tune = 2.2;
